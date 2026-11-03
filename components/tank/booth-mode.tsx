@@ -33,11 +33,17 @@ const noop = () => {};
 
 const WEBSITE = 'www.acuren.com';
 const PHONE = '1-800-218-7450';
-/** The QR code on the contact card. To point it somewhere else, replace the image. */
+/**
+ * The QR code on the contact card. It holds a contact card (vCard), so scanning
+ * offers "Add to Contacts" and works without an internet connection.
+ * public/branding/qr-acuren-website.svg links to the website instead.
+ */
 const QR = {
-  image: '/branding/qr-acuren-website.svg',
-  alt: `QR code for ${WEBSITE}`,
-  caption: `Scan to visit ${WEBSITE}`,
+  image: '/branding/qr-contact-harley-thorp.svg',
+  alt: 'QR code with contact details for Harley Thorp, Acuren',
+  caption: 'Scan to save my contact',
+  name: 'Harley Thorp',
+  title: 'Tank Integrity Program Supervisor',
 };
 
 export default function BoothMode() {
@@ -449,7 +455,12 @@ function BoothPlayer({ sequence, seconds, onExit }: PlayerProps) {
                 <div className="booth-qr-code">
                   <Image src={asset(QR.image)} alt={QR.alt} fill unoptimized />
                 </div>
-                <figcaption>{QR.caption}</figcaption>
+                <figcaption>
+                  <strong>{QR.caption}</strong>
+                  {QR.name}
+                  <br />
+                  {QR.title}
+                </figcaption>
               </figure>
             </div>
           </article>
