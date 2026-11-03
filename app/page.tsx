@@ -1,2 +1,4 @@
 import Explorer from '@/components/tank/explorer';
-export default function Page(){return <Explorer/>;}
+export default function Page() {
+  return <Explorer />;
+}
