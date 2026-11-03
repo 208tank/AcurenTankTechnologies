@@ -42,14 +42,13 @@ jobs:
           YARN_ENABLE_IMMUTABLE_INSTALLS: false
 
       - name: Check yarn.lock is up to date
-        run: git diff --quiet yarn.lock || echo "::warning file=yarn.lock::yarn install changed yarn.lock; commit the updated file."
-
-      - name: Upload corrected yarn.lock
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: yarn-lock
-          path: yarn.lock
+        run: |
+          if ! git diff --quiet yarn.lock; then
+            echo "::warning file=yarn.lock::yarn install changed yarn.lock; commit the updated file."
+            echo "=== BEGIN YARN.LOCK DIFF ==="
+            git diff yarn.lock
+            echo "=== END YARN.LOCK DIFF ==="
+          fi
 
       - name: Build static site
         run: yarn build
