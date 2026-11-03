@@ -12,8 +12,18 @@ type Props = {
   onSelect: (section: Section) => void;
   reset: number;
   labels: boolean;
+  /** Slowly orbit the tank, for unattended booth displays. */
+  autoRotate?: boolean;
 };
-export default function TankViewer({ type, cutaway, selected, onSelect, reset, labels }: Props) {
+export default function TankViewer({
+  type,
+  cutaway,
+  selected,
+  onSelect,
+  reset,
+  labels,
+  autoRotate = false,
+}: Props) {
   const host = useRef<HTMLDivElement>(null);
   const pins = useRef<Partial<Record<Section, HTMLButtonElement | null>>>({});
   const pick = useRef(onSelect);
@@ -21,6 +31,9 @@ export default function TankViewer({ type, cutaway, selected, onSelect, reset, l
   const labelState = useRef(labels);
   const api = useRef<{ focus: (s: Section) => void; reset: () => void } | null>(null);
   const [error, setError] = useState('');
+  // Bumped to rebuild the scene after the browser drops the WebGL context
+  // (a GPU driver reset, or the machine waking from sleep).
+  const [generation, setGeneration] = useState(0);
   useEffect(() => {
     pick.current = onSelect;
     selection.current = selected;
@@ -63,7 +76,8 @@ export default function TankViewer({ type, cutaway, selected, onSelect, reset, l
     controls.maxDistance = 34;
     controls.maxPolarAngle = Math.PI / 2 - 0.03;
     controls.enablePan = true;
-    controls.autoRotate = false;
+    controls.autoRotate = autoRotate;
+    controls.autoRotateSpeed = 0.45;
     const pmrem = new THREE.PMREMGenerator(renderer);
     const room = new RoomEnvironment();
     const env = pmrem.fromScene(room, 0.04);
@@ -145,6 +159,13 @@ export default function TankViewer({ type, cutaway, selected, onSelect, reset, l
     function leave() {
       hovered = null;
     }
+    let recover = 0;
+    function contextLost(e: Event) {
+      e.preventDefault();
+      console.error('WebGL context lost; rebuilding the 3D view.');
+      recover = window.setTimeout(() => setGeneration((g) => g + 1), 1000);
+    }
+    renderer.domElement.addEventListener('webglcontextlost', contextLost);
     renderer.domElement.addEventListener('pointermove', move);
     renderer.domElement.addEventListener('pointerdown', pointerdown);
     renderer.domElement.addEventListener('pointerup', pointerup);
@@ -177,7 +198,7 @@ export default function TankViewer({ type, cutaway, selected, onSelect, reset, l
         controls.target.lerp(targetTween, k);
         if (controls.target.distanceTo(targetTween) < 0.01) targetTween = null;
       }
-      controls.update();
+      controls.update(dt);
       for (const o of tank.targets) {
         const material = o.material as THREE.MeshStandardMaterial;
         const s = o.userData?.section;
@@ -199,8 +220,11 @@ export default function TankViewer({ type, cutaway, selected, onSelect, reset, l
       renderer.render(scene, camera);
     }
     animate();
+    if (autoRotate) api.current.focus(selection.current);
     return () => {
       dead = true;
+      window.clearTimeout(recover);
+      renderer.domElement.removeEventListener('webglcontextlost', contextLost);
       cancelAnimationFrame(frame);
       ro.disconnect();
       controls.dispose();
@@ -221,9 +245,12 @@ export default function TankViewer({ type, cutaway, selected, onSelect, reset, l
       mats.forEach((m) => m.dispose());
       env.dispose();
       renderer.dispose();
+      // Release the GPU context now rather than waiting for garbage collection;
+      // browsers cap live contexts, which matters when a booth loops for hours.
+      renderer.forceContextLoss();
       renderer.domElement.remove();
     };
-  }, [type, cutaway]);
+  }, [type, cutaway, autoRotate, generation]);
   return (
     <>
       <div
