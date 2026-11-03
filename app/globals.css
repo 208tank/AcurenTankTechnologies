@@ -712,6 +712,10 @@ input[type='radio'] {
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
+.equip > .equip-copy {
+  /* --fit is lowered by EquipmentSlide until the text fits. */
+  --e: calc(min(1cqw, 1.75cqh) * var(--fit, 1));
+}
 .equip-copy {
   min-height: 0;
   overflow: hidden;
@@ -837,6 +841,15 @@ input[type='radio'] {
   font-size: calc(var(--e) * 1.15);
   font-weight: 600;
   color: var(--brand-navy);
+}
+.equip-with-outputs .equip-stats {
+  grid-template-columns: repeat(4, 1fr);
+}
+.equip-with-outputs .equip-stats dd {
+  font-size: calc(var(--e) * 2.2);
+}
+.equip-with-outputs .equip-note {
+  display: none;
 }
 .equip-in-player {
   position: relative;

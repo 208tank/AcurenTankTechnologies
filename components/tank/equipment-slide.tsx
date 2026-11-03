@@ -1,18 +1,11 @@
 'use client';
 /* eslint-disable @next/next/no-img-element -- images can be browser-stored blobs */
+import { useLayoutEffect, useRef } from 'react';
 import { ScanLine } from 'lucide-react';
 import { Equipment, visibleStats } from '@/lib/equipment';
 import { useImageUrl } from '@/lib/image-store';
 
-function SlideImage({
-  src,
-  alt,
-  fit,
-}: {
-  src: string;
-  alt: string;
-  fit: 'cover' | 'contain';
-}) {
+function SlideImage({ src, alt, fit }: { src: string; alt: string; fit: 'cover' | 'contain' }) {
   const url = useImageUrl(src);
   if (!url) return null;
   return (
@@ -40,6 +33,28 @@ export default function EquipmentSlide({
   const outputs = item.outputs.filter((o) => o.image);
   const stats = visibleStats(item);
   const features = item.features.filter((f) => f.trim());
+  const copy = useRef<HTMLDivElement>(null);
+
+  // Shrink the text until it fits (long descriptions, five features, outputs
+  // strip taking space). Re-runs whenever the slide is resized.
+  useLayoutEffect(() => {
+    const el = copy.current;
+    if (!el) return;
+    function fit() {
+      if (!el) return;
+      let scale = 1;
+      el.style.setProperty('--fit', '1');
+      while (el.scrollHeight > el.clientHeight + 1 && scale > 0.5) {
+        scale = Math.round((scale - 0.05) * 100) / 100;
+        el.style.setProperty('--fit', String(scale));
+      }
+    }
+    fit();
+    void document.fonts?.ready.then(fit);
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [item, outputs.length]);
   return (
     <div className={`equip ${outputs.length ? 'equip-with-outputs' : ''}`}>
       <div className="equip-hero">
@@ -54,7 +69,7 @@ export default function EquipmentSlide({
         {badge && <span className="equip-badge">{badge}</span>}
       </div>
 
-      <div className="equip-copy">
+      <div ref={copy} className="equip-copy">
         {item.maker && <p className="equip-maker">{item.maker}</p>}
         <h2 className="equip-name">{item.name || 'Equipment name'}</h2>
         {item.tagline && <p className="equip-tagline">{item.tagline}</p>}
@@ -85,7 +100,11 @@ export default function EquipmentSlide({
             {outputs.map((o, i) => (
               <figure key={i}>
                 <div className="equip-output-image">
-                  <SlideImage src={o.image} alt={o.caption || `${item.name} output`} fit="contain" />
+                  <SlideImage
+                    src={o.image}
+                    alt={o.caption || `${item.name} output`}
+                    fit="contain"
+                  />
                 </div>
                 {o.caption && <figcaption>{o.caption}</figcaption>}
               </figure>
