@@ -35,6 +35,7 @@ import {
 import { useOfflineSupport } from '@/lib/offline';
 import { useTankData } from './use-tank-data';
 import AppHeader from './app-header';
+import EquipmentSlide from './equipment-slide';
 import BrandFooter from './brand-footer';
 
 const TankViewer = dynamic(() => import('./tank-viewer'), { ssr: false });
@@ -481,7 +482,7 @@ function BoothPlayer({ sequence, seconds, qr, qrSvgText, onExit }: PlayerProps) 
   const lastTech = useMemo(() => {
     for (let i = 0; i < sequence.length; i++) {
       const s = sequence[(index - i + sequence.length) % sequence.length];
-      if (s.kind === 'tech') return s.slide;
+      if (s.kind !== 'contact') return s.slide;
     }
     return null;
   }, [sequence, index]);
@@ -571,90 +572,96 @@ function BoothPlayer({ sequence, seconds, qr, qrSvgText, onExit }: PlayerProps) 
         </p>
       </header>
 
-      <main className="booth-main">
-        <section className="booth-stage viewer-stage" aria-hidden="true">
-          {lastTech && (
-            <TankViewer
-              type={lastTech.tankType}
-              cutaway={lastTech.section !== 'shell' && lastTech.section !== 'roof'}
-              selected={lastTech.section}
-              onSelect={noop}
-              reset={0}
-              labels
-              autoRotate
-            />
-          )}
-          {section && tankType && (
-            <div className="booth-chip">
-              <span>{section.name}</span>
-              {tankType.name}
-            </div>
-          )}
-        </section>
-
-        {tech && current.kind === 'tech' && (
-          <article key={index} className="booth-copy animate-fade-in">
-            <p className="booth-eyebrow">{section?.name} inspection</p>
-            <h1 className="booth-name">{tech.name}</h1>
-            <p className="booth-subtitle">{tech.subtitle}</p>
-            <p className="booth-description">{tech.description}</p>
-            <div className="booth-points">
-              {tech.detects && (
-                <div>
-                  <h2>What it finds</h2>
-                  <p>{tech.detects}</p>
-                </div>
-              )}
-              {tech.advantages && (
-                <div>
-                  <h2>Why it helps</h2>
-                  <p>{tech.advantages}</p>
-                </div>
-              )}
-            </div>
-          </article>
-        )}
-
-        {current.kind === 'contact' && (
-          <article key={index} className="booth-contact animate-fade-in">
-            <div>
-              <p className="booth-eyebrow">Acuren Tank Integrity Services</p>
-              <h1 className="booth-contact-title">
-                The right inspection for every part of your tank.
-              </h1>
-              <p className="booth-contact-text">
-                Talk to our team about your aboveground storage tank inspection program.
-              </p>
-            </div>
-            <div className="booth-contact-row">
-              <div>
-                <p className="booth-contact-line">{WEBSITE}</p>
-                <p className="booth-contact-line">{PHONE}</p>
+      {current.kind === 'equipment' ? (
+        <main key={index} className="booth-main-full animate-fade-in">
+          <EquipmentSlide item={current.equipment} technologyName={current.slide.technology.name} />
+        </main>
+      ) : (
+        <main className="booth-main">
+          <section className="booth-stage viewer-stage" aria-hidden="true">
+            {lastTech && (
+              <TankViewer
+                type={lastTech.tankType}
+                cutaway={lastTech.section !== 'shell' && lastTech.section !== 'roof'}
+                selected={lastTech.section}
+                onSelect={noop}
+                reset={0}
+                labels
+                autoRotate
+              />
+            )}
+            {section && tankType && (
+              <div className="booth-chip">
+                <span>{section.name}</span>
+                {tankType.name}
               </div>
-              <figure className="booth-qr">
-                <div className="booth-qr-code">
-                  <QrImage
-                    svg={qrSvgText}
-                    label={
-                      qr.mode === 'contact'
-                        ? `QR code with contact details for ${qr.name}`
-                        : `QR code linking to ${qr.link}`
-                    }
-                  />
+            )}
+          </section>
+
+          {tech && current.kind === 'tech' && (
+            <article key={index} className="booth-copy animate-fade-in">
+              <p className="booth-eyebrow">{section?.name} inspection</p>
+              <h1 className="booth-name">{tech.name}</h1>
+              <p className="booth-subtitle">{tech.subtitle}</p>
+              <p className="booth-description">{tech.description}</p>
+              <div className="booth-points">
+                {tech.detects && (
+                  <div>
+                    <h2>What it finds</h2>
+                    <p>{tech.detects}</p>
+                  </div>
+                )}
+                {tech.advantages && (
+                  <div>
+                    <h2>Why it helps</h2>
+                    <p>{tech.advantages}</p>
+                  </div>
+                )}
+              </div>
+            </article>
+          )}
+
+          {current.kind === 'contact' && (
+            <article key={index} className="booth-contact animate-fade-in">
+              <div>
+                <p className="booth-eyebrow">Acuren Tank Integrity Services</p>
+                <h1 className="booth-contact-title">
+                  The right inspection for every part of your tank.
+                </h1>
+                <p className="booth-contact-text">
+                  Talk to our team about your aboveground storage tank inspection program.
+                </p>
+              </div>
+              <div className="booth-contact-row">
+                <div>
+                  <p className="booth-contact-line">{WEBSITE}</p>
+                  <p className="booth-contact-line">{PHONE}</p>
                 </div>
-                <figcaption>
-                  <strong>{qrCaption(qr).heading}</strong>
-                  {qrCaption(qr).lines.map((l, i) => (
-                    <span key={i} className="block">
-                      {l}
-                    </span>
-                  ))}
-                </figcaption>
-              </figure>
-            </div>
-          </article>
-        )}
-      </main>
+                <figure className="booth-qr">
+                  <div className="booth-qr-code">
+                    <QrImage
+                      svg={qrSvgText}
+                      label={
+                        qr.mode === 'contact'
+                          ? `QR code with contact details for ${qr.name}`
+                          : `QR code linking to ${qr.link}`
+                      }
+                    />
+                  </div>
+                  <figcaption>
+                    <strong>{qrCaption(qr).heading}</strong>
+                    {qrCaption(qr).lines.map((l, i) => (
+                      <span key={i} className="block">
+                        {l}
+                      </span>
+                    ))}
+                  </figcaption>
+                </figure>
+              </div>
+            </article>
+          )}
+        </main>
+      )}
 
       <footer className="booth-bottom">
         <div

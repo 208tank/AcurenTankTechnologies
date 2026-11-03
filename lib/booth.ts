@@ -1,4 +1,5 @@
 import { Technology, sections } from './tank-data';
+import { Equipment, equipmentFor } from './equipment';
 import { PresentationSlide, createSlide, resolveSlides } from './tank-presentation';
 
 /** Booth display options, saved per browser. */
@@ -43,17 +44,23 @@ export function allTechnologySlides(data: Technology[]): PresentationSlide[] {
 }
 
 export type BoothTechSlide = ReturnType<typeof resolveSlides>[number];
-export type BoothSlide = { kind: 'tech'; slide: BoothTechSlide } | { kind: 'contact' };
+export type BoothSlide =
+  | { kind: 'tech'; slide: BoothTechSlide }
+  | { kind: 'equipment'; slide: BoothTechSlide; equipment: Equipment }
+  | { kind: 'contact' };
 
 /**
- * The looping sequence: a contact card first, then technologies with a contact
- * card after every `contactEvery` of them.
+ * The looping sequence: a contact card first, then technologies (each followed
+ * by its equipment slides) with a contact card after every `contactEvery`
+ * technologies.
  */
 export function boothSequence(slides: BoothTechSlide[], contactEvery: number): BoothSlide[] {
   const out: BoothSlide[] = [];
   if (contactEvery > 0) out.push({ kind: 'contact' });
   slides.forEach((slide, i) => {
     out.push({ kind: 'tech', slide });
+    for (const equipment of equipmentFor(slide.technology.id))
+      out.push({ kind: 'equipment', slide, equipment });
     const last = i === slides.length - 1;
     if (contactEvery > 0 && (i + 1) % contactEvery === 0 && !last) out.push({ kind: 'contact' });
   });

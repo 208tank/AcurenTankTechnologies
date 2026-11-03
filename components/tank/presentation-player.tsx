@@ -1,10 +1,12 @@
 'use client';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Maximize, Minimize, RotateCcw, X } from 'lucide-react';
 import { sections, tankTypes } from '@/lib/tank-data';
 import { resolveSlides } from '@/lib/tank-presentation';
+import { Equipment, equipmentFor } from '@/lib/equipment';
+import EquipmentSlide from './equipment-slide';
 const TankViewer = dynamic(() => import('./tank-viewer'), {
   ssr: false,
   loading: () => (
@@ -14,8 +16,19 @@ const TankViewer = dynamic(() => import('./tank-viewer'), {
   ),
 });
 const keepSlideSection = () => {};
-type Props = { slides: ReturnType<typeof resolveSlides>; onExit: () => void };
-export default function PresentationPlayer({ slides, onExit }: Props) {
+type TechSlide = ReturnType<typeof resolveSlides>[number];
+type Props = { slides: TechSlide[]; onExit: () => void };
+type Item = { slide: TechSlide; equipment?: Equipment };
+export default function PresentationPlayer({ slides: techSlides, onExit }: Props) {
+  // Each technology is followed by a slide per piece of its equipment.
+  const slides = useMemo<Item[]>(
+    () =>
+      techSlides.flatMap((slide) => [
+        { slide },
+        ...equipmentFor(slide.technology.id).map((equipment) => ({ slide, equipment })),
+      ]),
+    [techSlides],
+  );
   const [index, setIndex] = useState(0);
   const [full, setFull] = useState(false);
   const [notice, setNotice] = useState('');
@@ -24,7 +37,8 @@ export default function PresentationPlayer({ slides, onExit }: Props) {
   const root = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLElement>(null);
   const title = useRef<HTMLHeadingElement>(null);
-  const current = slides[Math.min(index, slides.length - 1)];
+  const item = slides[Math.min(index, slides.length - 1)];
+  const current = item.slide;
   const t = current.technology;
   const step = useCallback(
     (delta: number) => setIndex((i) => Math.max(0, Math.min(slides.length - 1, i + delta))),
@@ -116,103 +130,112 @@ export default function PresentationPlayer({ slides, onExit }: Props) {
           </button>
         </div>
       )}
-      <div className="slide-layout">
-        <section
-          className="slide-model viewer-stage relative overflow-hidden"
-          aria-label="Presentation tank model"
-        >
-          <TankViewer
-            type={current.tankType}
-            cutaway={current.section !== 'shell' && current.section !== 'roof'}
-            selected={current.section}
-            onSelect={keepSlideSection}
-            reset={reset}
-            labels={false}
-          />
-          <div className="absolute left-5 right-5 top-5 rounded border border-border bg-card/95 p-3">
-            <p className="eyebrow">Highlighted tank section</p>
-            <p className="mt-1 text-xl font-bold">
-              {sections.find((s) => s.id === current.section)?.name}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {tankTypes.find((s) => s.id === current.tankType)?.name}
-            </p>
-          </div>
-          <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between gap-3">
-            <span className="rounded bg-card/95 p-2 text-xs text-muted-foreground">
-              Drag to rotate · Scroll to zoom
-            </span>
-            <button className="tool-button" onClick={() => setReset((n) => n + 1)}>
-              <RotateCcw size={15} />
-              Reset view
-            </button>
-          </div>
-        </section>
-        <article ref={content} className="slide-content" aria-labelledby="slide-title">
-          <p className="eyebrow mb-3">
-            {current.section === 'floating'
-              ? 'Floating roof'
-              : sections.find((s) => s.id === current.section)?.name}{' '}
-            inspection
-          </p>
-          <h1
-            ref={title}
-            tabIndex={-1}
-            id="slide-title"
-            className="text-3xl font-bold tracking-tight outline-none md:text-4xl"
-          >
-            {t.name}
+      {item.equipment ? (
+        <div className="equip-in-player">
+          <EquipmentSlide item={item.equipment} technologyName={t.name} />
+          <h1 ref={title} tabIndex={-1} id="slide-title" className="sr-only">
+            {item.equipment.name}
           </h1>
-          <p className="mb-6 mt-2 text-lg text-muted-foreground">{t.subtitle}</p>
-          <p className="mb-6 text-base leading-relaxed">{t.description}</p>
-          {t.imageUrl && !broken && (
-            <div className="relative mb-6 aspect-video rounded bg-secondary">
-              <Image
-                src={t.imageUrl}
-                alt={`${t.name} inspection reference`}
-                fill
-                unoptimized
-                className="object-contain"
-                onError={() => setBroken(true)}
-              />
+        </div>
+      ) : (
+        <div className="slide-layout">
+          <section
+            className="slide-model viewer-stage relative overflow-hidden"
+            aria-label="Presentation tank model"
+          >
+            <TankViewer
+              type={current.tankType}
+              cutaway={current.section !== 'shell' && current.section !== 'roof'}
+              selected={current.section}
+              onSelect={keepSlideSection}
+              reset={reset}
+              labels={false}
+            />
+            <div className="absolute left-5 right-5 top-5 rounded border border-border bg-card/95 p-3">
+              <p className="eyebrow">Highlighted tank section</p>
+              <p className="mt-1 text-xl font-bold">
+                {sections.find((s) => s.id === current.section)?.name}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {tankTypes.find((s) => s.id === current.tankType)?.name}
+              </p>
             </div>
-          )}
-          {broken && (
-            <p className="mb-4 text-sm text-muted-foreground">Reference image is unavailable.</p>
-          )}
-          <div className="space-y-6">
-            {[
-              ['What it detects', t.detects],
-              ['How it works', t.howItWorks],
-              ['Advantages', t.advantages],
-              ['Limitations & considerations', t.limitations],
-            ]
-              .filter(([, text]) => text)
-              .map(([heading, text]) => (
-                <section key={heading}>
-                  <h2 className="mb-2 border-l-[3px] border-[var(--brand-cyan)] pl-3 text-lg font-bold">
-                    {heading}
-                  </h2>
-                  <p className="whitespace-pre-wrap text-base leading-relaxed text-muted-foreground">
-                    {text}
-                  </p>
-                </section>
-              ))}
-          </div>
-          {t.notes && (
-            <details className="mt-6 border-t border-border pt-4">
-              <summary className="cursor-pointer text-sm">
-                Presenter notes (visible to your audience when opened)
-              </summary>
-              <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed">{t.notes}</p>
-            </details>
-          )}
-          <p className="mt-8 text-xs text-muted-foreground">
-            Educational guidance · Illustrative model, not to scale. Use qualified procedures and
-            personnel.
-          </p>
-        </article>
-      </div>
+            <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between gap-3">
+              <span className="rounded bg-card/95 p-2 text-xs text-muted-foreground">
+                Drag to rotate · Scroll to zoom
+              </span>
+              <button className="tool-button" onClick={() => setReset((n) => n + 1)}>
+                <RotateCcw size={15} />
+                Reset view
+              </button>
+            </div>
+          </section>
+          <article ref={content} className="slide-content" aria-labelledby="slide-title">
+            <p className="eyebrow mb-3">
+              {current.section === 'floating'
+                ? 'Floating roof'
+                : sections.find((s) => s.id === current.section)?.name}{' '}
+              inspection
+            </p>
+            <h1
+              ref={title}
+              tabIndex={-1}
+              id="slide-title"
+              className="text-3xl font-bold tracking-tight outline-none md:text-4xl"
+            >
+              {t.name}
+            </h1>
+            <p className="mb-6 mt-2 text-lg text-muted-foreground">{t.subtitle}</p>
+            <p className="mb-6 text-base leading-relaxed">{t.description}</p>
+            {t.imageUrl && !broken && (
+              <div className="relative mb-6 aspect-video rounded bg-secondary">
+                <Image
+                  src={t.imageUrl}
+                  alt={`${t.name} inspection reference`}
+                  fill
+                  unoptimized
+                  className="object-contain"
+                  onError={() => setBroken(true)}
+                />
+              </div>
+            )}
+            {broken && (
+              <p className="mb-4 text-sm text-muted-foreground">Reference image is unavailable.</p>
+            )}
+            <div className="space-y-6">
+              {[
+                ['What it detects', t.detects],
+                ['How it works', t.howItWorks],
+                ['Advantages', t.advantages],
+                ['Limitations & considerations', t.limitations],
+              ]
+                .filter(([, text]) => text)
+                .map(([heading, text]) => (
+                  <section key={heading}>
+                    <h2 className="mb-2 border-l-[3px] border-[var(--brand-cyan)] pl-3 text-lg font-bold">
+                      {heading}
+                    </h2>
+                    <p className="whitespace-pre-wrap text-base leading-relaxed text-muted-foreground">
+                      {text}
+                    </p>
+                  </section>
+                ))}
+            </div>
+            {t.notes && (
+              <details className="mt-6 border-t border-border pt-4">
+                <summary className="cursor-pointer text-sm">
+                  Presenter notes (visible to your audience when opened)
+                </summary>
+                <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed">{t.notes}</p>
+              </details>
+            )}
+            <p className="mt-8 text-xs text-muted-foreground">
+              Educational guidance · Illustrative model, not to scale. Use qualified procedures and
+              personnel.
+            </p>
+          </article>
+        </div>
+      )}
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-card px-5 py-4">
         <button className="tool-button" disabled={index === 0} onClick={() => step(-1)}>
           <ArrowLeft size={17} />

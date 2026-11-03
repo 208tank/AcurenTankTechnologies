@@ -14,6 +14,7 @@ import {
   slideSections,
 } from '@/lib/tank-presentation';
 import { useTankData } from './use-tank-data';
+import { equipmentFor } from '@/lib/equipment';
 import AppHeader from './app-header';
 import BrandFooter from './brand-footer';
 import PresentationPlayer from './presentation-player';
@@ -212,6 +213,14 @@ export default function PresentationBuilder() {
                         {r?.technology.name ||
                           data.find((t) => t.id === s.technologyId)?.name ||
                           'Unavailable technology'}
+                        {equipmentFor(s.technologyId).length > 0 && (
+                          <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+                            + equipment slides:{' '}
+                            {equipmentFor(s.technologyId)
+                              .map((e) => e.name)
+                              .join(', ')}
+                          </span>
+                        )}
                       </h3>
                       <button
                         className="tool-button !p-2"
