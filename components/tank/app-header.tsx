@@ -3,6 +3,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useState } from 'react';
 import { Box, Library, Presentation } from 'lucide-react';
+import { asset } from '@/lib/base-path';
 export default function AppHeader({
   manage = false,
   present = false,
@@ -24,7 +25,7 @@ export default function AppHeader({
           ) : (
             <div className="relative aspect-[137.96/90.23] w-[98px] bg-white">
               <Image
-                src="/branding/acuren-logo.svg"
+                src={asset('/branding/acuren-logo.svg')}
                 alt="Acuren"
                 fill
                 priority

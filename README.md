@@ -48,20 +48,22 @@ yarn dev          # http://localhost:3000
 Other commands:
 
 ```bash
-yarn build && yarn start   # production build
+yarn build                 # static site into out/ (preview: npx serve out)
 yarn lint                  # ESLint
 npx prettier --write .     # format code (settings in .prettierrc)
 ```
 
 ## Hosting
 
-Hosted on Vercel, which builds and deploys automatically on every push to
-`main` and gives each pull request its own preview link. The Vercel project
-needs this environment variable so it uses Yarn 4:
+The site is published free on GitHub Pages at
+<https://208tank.github.io/AcurenTankTechnologies/>.
 
-| Name | Value |
-| --- | --- |
-| `ENABLE_EXPERIMENTAL_COREPACK` | `1` |
+`.github/workflows/deploy.yml` builds the site as plain static files and
+publishes it every time `main` changes. Pull requests are built as a check but
+not published. You can follow each run on the repo's **Actions** tab.
+
+One-time setup: in the repo's **Settings → Pages**, set **Source** to
+**GitHub Actions**.
 
 See `STYLE_GUIDE.md` for brand colors, shared CSS classes and accessibility
 rules.

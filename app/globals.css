@@ -249,7 +249,7 @@ input[type='checkbox'] {
   z-index: -1;
   pointer-events: none;
   inset: -20px 0 0 50%;
-  background: url('/branding/acuren-swoosh.png') right center/contain no-repeat;
+  background: url('../public/branding/acuren-swoosh.png') right center/contain no-repeat;
   opacity: 0.6;
 }
 .brand-intro > div {

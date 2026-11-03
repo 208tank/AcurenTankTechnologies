@@ -1,6 +1,7 @@
 'use client';
 import Image from 'next/image';
 import { useState } from 'react';
+import { asset } from '@/lib/base-path';
 export default function BrandFooter() {
   const [broken, setBroken] = useState(false);
   return (
@@ -17,7 +18,7 @@ export default function BrandFooter() {
       ) : (
         <div className="brand-tagline relative aspect-[514/41]">
           <Image
-            src="/branding/acuren-tagline.png"
+            src={asset('/branding/acuren-tagline.png')}
             alt="A Higher Level of Reliability®"
             fill
             unoptimized
