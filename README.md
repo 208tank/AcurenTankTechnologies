@@ -5,17 +5,18 @@ Acuren's tank integrity services to clients and at trade shows.
 
 ## What's in it
 
-| Screen       | Path       | What it does                                                                                                                                                                                      |
-| ------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 3D Explorer  | `/`        | Rotate a cutaway tank (internal floating roof, external floating roof or insulated), click a section and see which inspection technologies apply.                                                 |
-| Presentation | `/present` | Pick technologies, set their order and the tank view for each, then present full screen. Arrow keys move between slides.                                                                          |
-| Booth mode   | `/booth`   | Loops the saved presentation (or every technology) full screen on a TV at a trade show, with a turning tank model and a contact card with a QR code. Works offline once the site has been opened. |
-| Library      | `/manage`  | Edit the technology write-ups, add new ones, and export or import the library as JSON.                                                                                                            |
+| Screen           | Path                | What it does                                                                                                                                                                                      |
+| ---------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 3D Explorer      | `/`                 | Rotate a cutaway tank (internal floating roof, external floating roof or insulated), click a section and see which inspection technologies apply.                                                 |
+| Presentation     | `/present`          | Pick technology and equipment slides, put them in any order, set the tank view for each technology, then present full screen. Arrow keys move between slides.                                     |
+| Booth mode       | `/booth`            | Loops the saved presentation (or every technology) full screen on a TV at a trade show, with a turning tank model and a contact card with a QR code. Works offline once the site has been opened. |
+| Library          | `/manage`           | Edit the technology write-ups, add new ones, and export or import the library as JSON.                                                                                                            |
+| Equipment slides | `/manage/equipment` | Create and edit equipment slides (photo, headline specs, features, example outputs). Images are uploaded in the browser; Export/Import moves slides and images between computers.                 |
 
-The technology library and the current presentation are saved in the browser
-that's running the app (local storage). They are **not** shared between
-computers. Use **Export JSON** on the Library screen to back up a library or
-move it to another laptop.
+The technology library, equipment slides (with their images, in IndexedDB) and
+the current presentation are saved in the browser that's running the app. They are **not** shared between
+computers. Use **Export** on the Library and Equipment slides screens to back
+them up or move them to another laptop.
 
 ## Project layout
 
@@ -28,9 +29,12 @@ components/tank/         All TankScope screens and the 3D viewer
   presentation-*.tsx     Presentation builder and full-screen player
   booth-mode.tsx         Booth mode setup screen and TV loop
   library-manager.tsx    Library editor
+  equipment-library.tsx  Equipment slide editor; equipment-slide.tsx draws the slide
 lib/tank-data.ts         Tank types, sections and the default technology library
 lib/tank-presentation.ts Saving and validating presentations
 lib/booth.ts             Booth mode settings and slide sequence
+lib/equipment.ts         Equipment slide fields and the default slides
+lib/image-store.ts       Uploaded images: resizing and browser storage (IndexedDB)
 lib/offline.ts           Registers the offline service worker (public/sw.js)
 public/branding/         Acuren logo, tagline and icons
 ```
