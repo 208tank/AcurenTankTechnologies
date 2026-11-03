@@ -4,9 +4,9 @@ import Image from 'next/image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Maximize, Minimize, RotateCcw, X } from 'lucide-react';
 import { sections, tankTypes } from '@/lib/tank-data';
-import { resolveSlides } from '@/lib/tank-presentation';
-import { Equipment, equipmentFor } from '@/lib/equipment';
+import { ResolvedItem } from '@/lib/tank-presentation';
 import EquipmentSlide from './equipment-slide';
+import { useTankData } from './use-tank-data';
 const TankViewer = dynamic(() => import('./tank-viewer'), {
   ssr: false,
   loading: () => (
@@ -16,18 +16,22 @@ const TankViewer = dynamic(() => import('./tank-viewer'), {
   ),
 });
 const keepSlideSection = () => {};
-type TechSlide = ReturnType<typeof resolveSlides>[number];
-type Props = { slides: TechSlide[]; onExit: () => void };
-type Item = { slide: TechSlide; equipment?: Equipment };
-export default function PresentationPlayer({ slides: techSlides, onExit }: Props) {
-  // Each technology is followed by a slide per piece of its equipment.
-  const slides = useMemo<Item[]>(
+type Props = { slides: ResolvedItem[]; onExit: () => void };
+export default function PresentationPlayer({ slides, onExit }: Props) {
+  const { data } = useTankData();
+  // The tank model keeps showing the nearest earlier technology during
+  // equipment slides, so returning to a technology slide doesn't jump.
+  const lastTech = useMemo(
     () =>
-      techSlides.flatMap((slide) => [
-        { slide },
-        ...equipmentFor(slide.technology.id).map((equipment) => ({ slide, equipment })),
-      ]),
-    [techSlides],
+      slides.map((_, i) => {
+        for (let j = i; j >= 0; j--) {
+          const s = slides[j];
+          if (s.kind === 'tech') return s.slide;
+        }
+        const first = slides.find((s) => s.kind === 'tech');
+        return first?.kind === 'tech' ? first.slide : null;
+      }),
+    [slides],
   );
   const [index, setIndex] = useState(0);
   const [full, setFull] = useState(false);
@@ -37,9 +41,14 @@ export default function PresentationPlayer({ slides: techSlides, onExit }: Props
   const root = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLElement>(null);
   const title = useRef<HTMLHeadingElement>(null);
-  const item = slides[Math.min(index, slides.length - 1)];
-  const current = item.slide;
-  const t = current.technology;
+  const position = Math.min(index, slides.length - 1);
+  const item = slides[position];
+  const current = lastTech[position];
+  const t = current?.technology;
+  const badgeFor = (technologyId: string) => {
+    const related = data.find((x) => x.id === technologyId);
+    return related ? `${related.name} equipment` : 'Equipment';
+  };
   const step = useCallback(
     (delta: number) => setIndex((i) => Math.max(0, Math.min(slides.length - 1, i + delta))),
     [slides.length],
@@ -130,12 +139,16 @@ export default function PresentationPlayer({ slides: techSlides, onExit }: Props
           </button>
         </div>
       )}
-      {item.equipment ? (
+      {item.kind === 'equipment' || !current || !t ? (
         <div className="equip-in-player">
-          <EquipmentSlide item={item.equipment} technologyName={t.name} />
-          <h1 ref={title} tabIndex={-1} id="slide-title" className="sr-only">
-            {item.equipment.name}
-          </h1>
+          {item.kind === 'equipment' && (
+            <>
+              <EquipmentSlide item={item.equipment} badge={badgeFor(item.equipment.technologyId)} />
+              <h1 ref={title} tabIndex={-1} id="slide-title" className="sr-only">
+                {item.equipment.name}
+              </h1>
+            </>
+          )}
         </div>
       ) : (
         <div className="slide-layout">
