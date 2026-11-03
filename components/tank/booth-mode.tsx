@@ -33,6 +33,12 @@ const noop = () => {};
 
 const WEBSITE = 'www.acuren.com';
 const PHONE = '1-800-218-7450';
+/** The QR code on the contact card. To point it somewhere else, replace the image. */
+const QR = {
+  image: '/branding/qr-acuren-website.svg',
+  alt: `QR code for ${WEBSITE}`,
+  caption: `Scan to visit ${WEBSITE}`,
+};
 
 export default function BoothMode() {
   const { data, ready } = useTankData();
@@ -433,18 +439,19 @@ function BoothPlayer({ sequence, seconds, onExit }: PlayerProps) {
               <p className="booth-contact-text">
                 Talk to our team about your aboveground storage tank inspection program.
               </p>
-              <p className="booth-contact-line">{WEBSITE}</p>
-              <p className="booth-contact-line">{PHONE}</p>
             </div>
-            <figure className="booth-qr">
-              <Image
-                src={asset('/branding/qr-acuren-website.svg')}
-                alt={`QR code for ${WEBSITE}`}
-                fill
-                unoptimized
-              />
-              <figcaption>Scan to visit {WEBSITE}</figcaption>
-            </figure>
+            <div className="booth-contact-row">
+              <div>
+                <p className="booth-contact-line">{WEBSITE}</p>
+                <p className="booth-contact-line">{PHONE}</p>
+              </div>
+              <figure className="booth-qr">
+                <div className="booth-qr-code">
+                  <Image src={asset(QR.image)} alt={QR.alt} fill unoptimized />
+                </div>
+                <figcaption>{QR.caption}</figcaption>
+              </figure>
+            </div>
           </article>
         )}
       </main>
