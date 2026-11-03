@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
-import { Toaster } from 'sonner';
 import './globals.css';
 import { ThemeProvider } from '@/components/theme-provider';
 import { ChunkLoadErrorHandler } from '@/components/chunk-load-error-handler';
@@ -36,7 +35,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           enableSystem={false}
         >
           {children}
-          <Toaster />
           <ChunkLoadErrorHandler />
         </ThemeProvider>
       </body>

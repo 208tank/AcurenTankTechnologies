@@ -44,6 +44,13 @@ jobs:
       - name: Check yarn.lock is up to date
         run: git diff --quiet yarn.lock || echo "::warning file=yarn.lock::yarn install changed yarn.lock; commit the updated file."
 
+      - name: Upload corrected yarn.lock
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: yarn-lock
+          path: yarn.lock
+
       - name: Build static site
         run: yarn build
 
