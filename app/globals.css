@@ -552,7 +552,9 @@ input[type='radio'] {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: calc(var(--u) * 2.5);
+  gap: calc(var(--u) * 2);
+  padding-top: calc(var(--u) * 2);
+  padding-bottom: calc(var(--u) * 2);
   background: linear-gradient(160deg, #fff 40%, #e8f6fb);
 }
 .booth-contact-title {
@@ -582,7 +584,7 @@ input[type='radio'] {
 }
 .booth-qr {
   flex-shrink: 0;
-  width: calc(var(--u) * 13);
+  width: calc(var(--u) * 11);
   text-align: center;
 }
 .booth-qr-code {
