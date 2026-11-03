@@ -36,13 +36,11 @@ To change the default technology write-ups, edit the `defaults` list in
 
 ## Running it locally
 
-Requires Node.js 20.9 or later. The lockfile is in Yarn 4 format, so use Yarn 4
-rather than the older Yarn 1 (`corepack use` pins it for the project the first
-time).
+Requires Node.js 20.9 or later. The project uses Yarn 4, pinned in
+`package.json`; Corepack (bundled with Node) fetches the right version.
 
 ```bash
 corepack enable
-corepack use yarn@4
 yarn install
 yarn dev          # http://localhost:3000
 ```
@@ -54,6 +52,16 @@ yarn build && yarn start   # production build
 yarn lint                  # ESLint
 npx prettier --write .     # format code (settings in .prettierrc)
 ```
+
+## Hosting
+
+Hosted on Vercel, which builds and deploys automatically on every push to
+`main` and gives each pull request its own preview link. The Vercel project
+needs this environment variable so it uses Yarn 4:
+
+| Name | Value |
+| --- | --- |
+| `ENABLE_EXPERIMENTAL_COREPACK` | `1` |
 
 See `STYLE_GUIDE.md` for brand colors, shared CSS classes and accessibility
 rules.
