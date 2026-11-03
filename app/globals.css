@@ -584,7 +584,7 @@ input[type='radio'] {
 }
 .booth-qr {
   flex-shrink: 0;
-  width: calc(var(--u) * 11);
+  width: calc(var(--u) * 14);
   text-align: center;
 }
 .booth-qr-code {
@@ -593,6 +593,12 @@ input[type='radio'] {
   border-radius: 6px;
   overflow: hidden;
   box-shadow: 0 3px 14px #002b5c15;
+}
+.booth-qr figcaption strong {
+  display: block;
+  margin-bottom: calc(var(--u) * 0.2);
+  font-size: calc(var(--u) * 1.2);
+  color: var(--brand-navy);
 }
 .booth-qr figcaption {
   margin-top: calc(var(--u) * 0.7);
