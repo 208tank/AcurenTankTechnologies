@@ -9,9 +9,9 @@
  * Paths are relative to this file, so it works under any base path.
  * Bump VERSION to discard everything saved by an older version.
  */
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = `tankscope-${VERSION}`;
-const PAGES = ['./', './booth/', './present/', './manage/'];
+const PAGES = ['./', './booth/', './present/', './manage/', './manage/equipment/'];
 const NETWORK_TIMEOUT_MS = 4000;
 
 self.addEventListener('install', (event) => {

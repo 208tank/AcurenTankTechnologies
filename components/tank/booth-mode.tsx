@@ -6,9 +6,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Check, MonitorPlay, Play, QrCode, RotateCcw, WifiOff } from 'lucide-react';
 import { sections, tankTypes } from '@/lib/tank-data';
 import {
+  DeckItem,
   PRESENTATION_KEY,
-  PresentationSlide,
-  resolveSlides,
+  resolveDeck,
   validatePresentation,
 } from '@/lib/tank-presentation';
 import {
@@ -18,7 +18,7 @@ import {
   CONTACT_OPTIONS,
   DEFAULT_BOOTH,
   SECONDS_OPTIONS,
-  allTechnologySlides,
+  allTechnologyItems,
   boothSequence,
   readBoothSettings,
 } from '@/lib/booth';
@@ -34,6 +34,7 @@ import {
 } from '@/lib/booth-qr';
 import { useOfflineSupport } from '@/lib/offline';
 import { useTankData } from './use-tank-data';
+import { useEquipment } from './use-equipment';
 import AppHeader from './app-header';
 import EquipmentSlide from './equipment-slide';
 import BrandFooter from './brand-footer';
@@ -47,7 +48,8 @@ const PHONE = '1-800-218-7450';
 export default function BoothMode() {
   const { data, ready } = useTankData();
   const offline = useOfflineSupport();
-  const [deck, setDeck] = useState<PresentationSlide[]>([]);
+  const { items: equipment, ready: equipmentReady } = useEquipment();
+  const [deck, setDeck] = useState<DeckItem[]>([]);
   const [settings, setSettings] = useState<BoothSettings>(DEFAULT_BOOTH);
   const [loaded, setLoaded] = useState(false);
   const [running, setRunning] = useState(false);
@@ -109,8 +111,8 @@ export default function BoothMode() {
   const playerQrSvg = 'svg' in qrResult ? qrResult.svg : null;
   const playerQr = playerQrSvg ? qr : DEFAULT_BOOTH_QR;
 
-  const deckSlides = useMemo(() => resolveSlides(deck, data), [deck, data]);
-  const allSlides = useMemo(() => resolveSlides(allTechnologySlides(data), data), [data]);
+  const deckSlides = useMemo(() => resolveDeck(deck, data, equipment), [deck, data, equipment]);
+  const allSlides = useMemo(() => allTechnologyItems(data, equipment), [data, equipment]);
   const useDeck = settings.source === 'deck' && deckSlides.length > 0;
   const techSlides = useDeck ? deckSlides : allSlides;
   const sequence = useMemo(
@@ -134,7 +136,7 @@ export default function BoothMode() {
     setRunning(false);
   }, []);
 
-  if (running && ready && loaded && sequence.length)
+  if (running && ready && equipmentReady && loaded && sequence.length)
     return (
       <BoothPlayer
         sequence={sequence}
@@ -187,7 +189,7 @@ export default function BoothMode() {
                   <span>
                     <span className="block font-medium">
                       My presentation ({deckSlides.length}{' '}
-                      {deckSlides.length === 1 ? 'technology' : 'technologies'})
+                      {deckSlides.length === 1 ? 'slide' : 'slides'})
                     </span>
                     <span className="mt-1 block text-xs text-muted-foreground">
                       {deckSlides.length ? (
@@ -213,7 +215,9 @@ export default function BoothMode() {
                     onChange={() => update({ source: 'all' })}
                   />
                   <span>
-                    <span className="block font-medium">All technologies ({allSlides.length})</span>
+                    <span className="block font-medium">
+                      All technologies ({allSlides.filter((x) => x.kind === 'tech').length})
+                    </span>
                     <span className="mt-1 block text-xs text-muted-foreground">
                       The whole library, from floor to rim seal.
                     </span>
@@ -255,12 +259,12 @@ export default function BoothMode() {
 
             <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border pt-5">
               <p className="text-xs text-muted-foreground">
-                {techSlides.length} technologies · full loop {Math.floor(loopSeconds / 60)} min{' '}
+                {techSlides.length} slides · full loop {Math.floor(loopSeconds / 60)} min{' '}
                 {loopSeconds % 60} s
               </p>
               <button
                 className="tool-button primary-button !px-6 !py-3 text-sm"
-                disabled={!ready || !loaded || !sequence.length}
+                disabled={!ready || !equipmentReady || !loaded || !sequence.length}
                 onClick={start}
               >
                 <Play size={16} />
@@ -474,6 +478,7 @@ type PlayerProps = {
 };
 
 function BoothPlayer({ sequence, seconds, qr, qrSvgText, onExit }: PlayerProps) {
+  const { data } = useTankData();
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const [idle, setIdle] = useState(false);
@@ -482,7 +487,7 @@ function BoothPlayer({ sequence, seconds, qr, qrSvgText, onExit }: PlayerProps) 
   const lastTech = useMemo(() => {
     for (let i = 0; i < sequence.length; i++) {
       const s = sequence[(index - i + sequence.length) % sequence.length];
-      if (s.kind !== 'contact') return s.slide;
+      if (s.kind === 'tech') return s.slide;
     }
     return null;
   }, [sequence, index]);
@@ -574,7 +579,13 @@ function BoothPlayer({ sequence, seconds, qr, qrSvgText, onExit }: PlayerProps) 
 
       {current.kind === 'equipment' ? (
         <main key={index} className="booth-main-full animate-fade-in">
-          <EquipmentSlide item={current.equipment} technologyName={current.slide.technology.name} />
+          <EquipmentSlide
+            item={current.equipment}
+            badge={(() => {
+              const related = data.find((x) => x.id === current.equipment.technologyId);
+              return related ? `${related.name} equipment` : 'Equipment';
+            })()}
+          />
         </main>
       ) : (
         <main className="booth-main">

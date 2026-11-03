@@ -1,6 +1,12 @@
 import { Technology, sections } from './tank-data';
-import { Equipment, equipmentFor } from './equipment';
-import { PresentationSlide, createSlide, resolveSlides } from './tank-presentation';
+import { Equipment } from './equipment';
+import {
+  PresentationSlide,
+  ResolvedItem,
+  ResolvedTechSlide,
+  createSlide,
+  resolveSlides,
+} from './tank-presentation';
 
 /** Booth display options, saved per browser. */
 export type BoothSettings = {
@@ -43,26 +49,40 @@ export function allTechnologySlides(data: Technology[]): PresentationSlide[] {
     .sort((a, b) => order.indexOf(a.section) - order.indexOf(b.section));
 }
 
-export type BoothTechSlide = ReturnType<typeof resolveSlides>[number];
+export type BoothTechSlide = ResolvedTechSlide;
 export type BoothSlide =
   | { kind: 'tech'; slide: BoothTechSlide }
-  | { kind: 'equipment'; slide: BoothTechSlide; equipment: Equipment }
+  | { kind: 'equipment'; equipment: Equipment }
   | { kind: 'contact' };
 
+/** Every technology, each followed by the equipment slides related to it. */
+export function allTechnologyItems(data: Technology[], equipment: Equipment[]): ResolvedItem[] {
+  return resolveSlides(allTechnologySlides(data), data).flatMap((slide): ResolvedItem[] => [
+    { kind: 'tech', slide },
+    ...equipment
+      .filter((e) => e.technologyId === slide.technology.id)
+      .map((e): ResolvedItem => ({ kind: 'equipment', equipment: e })),
+  ]);
+}
+
 /**
- * The looping sequence: a contact card first, then technologies (each followed
- * by its equipment slides) with a contact card after every `contactEvery`
- * technologies.
+ * The looping sequence: a contact card first, then the slides, with a contact
+ * card after every `contactEvery` technologies (placed after that technology's
+ * equipment slides, never between them). The loop itself restarts on the
+ * opening contact card, so none is added at the very end.
  */
-export function boothSequence(slides: BoothTechSlide[], contactEvery: number): BoothSlide[] {
+export function boothSequence(items: ResolvedItem[], contactEvery: number): BoothSlide[] {
   const out: BoothSlide[] = [];
   if (contactEvery > 0) out.push({ kind: 'contact' });
-  slides.forEach((slide, i) => {
-    out.push({ kind: 'tech', slide });
-    for (const equipment of equipmentFor(slide.technology.id))
-      out.push({ kind: 'equipment', slide, equipment });
-    const last = i === slides.length - 1;
-    if (contactEvery > 0 && (i + 1) % contactEvery === 0 && !last) out.push({ kind: 'contact' });
-  });
+  let techCount = 0;
+  let due = false;
+  for (const item of items) {
+    if (due && item.kind === 'tech') {
+      out.push({ kind: 'contact' });
+      due = false;
+    }
+    out.push(item);
+    if (item.kind === 'tech' && contactEvery > 0 && ++techCount % contactEvery === 0) due = true;
+  }
   return out;
 }

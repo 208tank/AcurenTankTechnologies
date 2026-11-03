@@ -1,26 +1,32 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowUp, ArrowDown, MonitorPlay, Play, Search, X } from 'lucide-react';
+import { ArrowUp, ArrowDown, MonitorPlay, Play, ScanLine, Search, X } from 'lucide-react';
 import { Section, Technology, sections, tankTypes, TankType } from '@/lib/tank-data';
 import {
+  DeckItem,
   PresentationSlide,
   PRESENTATION_KEY,
+  isEquipmentItem,
   validatePresentation,
+  serializePresentation,
   createSlide,
+  resolveDeck,
   resolveSlides,
   moveSlide,
   slideTypes,
   slideSections,
 } from '@/lib/tank-presentation';
+import { Equipment } from '@/lib/equipment';
 import { useTankData } from './use-tank-data';
-import { equipmentFor } from '@/lib/equipment';
+import { useEquipment } from './use-equipment';
 import AppHeader from './app-header';
 import BrandFooter from './brand-footer';
 import PresentationPlayer from './presentation-player';
 export default function PresentationBuilder() {
   const { data, ready, error } = useTankData();
-  const [slides, setSlides] = useState<PresentationSlide[]>([]);
+  const { items: equipment, ready: equipmentReady } = useEquipment();
+  const [slides, setSlides] = useState<DeckItem[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
   const [saveError, setSaveError] = useState('');
@@ -42,17 +48,20 @@ export default function PresentationBuilder() {
     }
     setLoaded(true);
   }, []);
-  const resolved = useMemo(() => resolveSlides(slides, data), [slides, data]);
-  const canEdit = ready && loaded;
+  const resolved = useMemo(() => resolveDeck(slides, data, equipment), [slides, data, equipment]);
+  const canEdit = ready && loaded && equipmentReady;
+  const hasTech = (id: string) => slides.some((s) => !isEquipmentItem(s) && s.technologyId === id);
+  const hasEquipment = (id: string) =>
+    slides.some((s) => isEquipmentItem(s) && s.equipmentId === id);
   const visible = data.filter(
     (t) =>
       (section === 'all' || t.sections.includes(section)) &&
       `${t.name} ${t.subtitle}`.toLowerCase().includes(query.toLowerCase()),
   );
-  function save(next: PresentationSlide[]) {
+  function save(next: DeckItem[]) {
     setSlides(next);
     try {
-      localStorage.setItem(PRESENTATION_KEY, JSON.stringify({ version: 1, slides: next }));
+      localStorage.setItem(PRESENTATION_KEY, serializePresentation(next));
       setSaveMessage('Selection and order saved in this browser.');
       setSaveError('');
     } catch (e) {
@@ -64,14 +73,24 @@ export default function PresentationBuilder() {
     }
   }
   function toggle(t: Technology) {
-    const exists = slides.some((s) => s.technologyId === t.id);
     const next = createSlide(t);
     save(
-      exists ? slides.filter((s) => s.technologyId !== t.id) : next ? [...slides, next] : slides,
+      hasTech(t.id)
+        ? slides.filter((s) => isEquipmentItem(s) || s.technologyId !== t.id)
+        : next
+          ? [...slides, next]
+          : slides,
+    );
+  }
+  function toggleEquipment(e: Equipment) {
+    save(
+      hasEquipment(e.id)
+        ? slides.filter((s) => !isEquipmentItem(s) || s.equipmentId !== e.id)
+        : [...slides, { equipmentId: e.id }],
     );
   }
   function configure(index: number, patch: Partial<PresentationSlide>) {
-    save(slides.map((s, i) => (i === index ? { ...s, ...patch } : s)));
+    save(slides.map((s, i) => (i === index && !isEquipmentItem(s) ? { ...s, ...patch } : s)));
   }
   if (playing && resolved.length)
     return <PresentationPlayer slides={resolved} onExit={() => setPlaying(false)} />;
@@ -81,10 +100,11 @@ export default function PresentationBuilder() {
       <main className="mx-auto max-w-[1600px] px-5 py-7 md:px-8">
         <div className="brand-intro mb-6 flex flex-wrap items-center justify-between gap-4">
           <div>
-            <p className="eyebrow mb-2">Your talk. Your technologies.</p>
+            <p className="eyebrow mb-2">Your talk. Your technologies and equipment.</p>
             <h1 className="text-3xl font-bold tracking-tight">Build presentation</h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              Select your methods, arrange the order, then present one technology at a time.
+              Select technologies and equipment, arrange the order, then present one slide at a
+              time.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -116,10 +136,11 @@ export default function PresentationBuilder() {
         )}
         <div className="grid items-start gap-6 lg:grid-cols-[1fr_1fr]">
           <section
-            aria-label="Choose technologies"
+            aria-label="Choose slides"
             className="rounded-lg border border-border bg-card p-5"
           >
-            <h2 className="mb-4 text-xl font-semibold">1. Choose technologies</h2>
+            <h2 className="mb-4 text-xl font-semibold">1. Choose slides</h2>
+            <h3 className="mb-3 text-sm font-semibold">Technologies</h3>
             <div className="mb-4 flex flex-wrap gap-3">
               <div className="relative min-w-[180px] flex-1">
                 <Search size={16} className="absolute left-3 top-3 text-muted-foreground" />
@@ -149,12 +170,12 @@ export default function PresentationBuilder() {
               {visible.map((t) => (
                 <label
                   key={t.id}
-                  className={`flex cursor-pointer items-start gap-3 rounded border p-4 ${slides.some((s) => s.technologyId === t.id) ? 'border-primary/40 bg-secondary' : 'border-border'}`}
+                  className={`flex cursor-pointer items-start gap-3 rounded border p-4 ${hasTech(t.id) ? 'border-primary/40 bg-secondary' : 'border-border'}`}
                 >
                   <input
                     type="checkbox"
                     className="mt-1 shrink-0"
-                    checked={slides.some((s) => s.technologyId === t.id)}
+                    checked={hasTech(t.id)}
                     disabled={!canEdit || !createSlide(t)}
                     onChange={() => toggle(t)}
                   />
@@ -182,6 +203,45 @@ export default function PresentationBuilder() {
                 </p>
               )}
             </div>
+            <div className="mt-6 border-t border-border pt-5">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="text-sm font-semibold">Equipment slides</h3>
+                <Link href="/manage/equipment" className="text-xs underline">
+                  Edit equipment slides
+                </Link>
+              </div>
+              <div className="space-y-2">
+                {equipment.map((e) => (
+                  <label
+                    key={e.id}
+                    className={`flex cursor-pointer items-start gap-3 rounded border p-4 ${hasEquipment(e.id) ? 'border-primary/40 bg-secondary' : 'border-border'}`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-1 shrink-0"
+                      checked={hasEquipment(e.id)}
+                      disabled={!canEdit}
+                      onChange={() => toggleEquipment(e)}
+                    />
+                    <span>
+                      <span className="block text-sm font-semibold">{e.name}</span>
+                      <span className="mt-1 block text-xs text-muted-foreground">
+                        {[e.maker, e.tagline].filter(Boolean).join(' · ')}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+                {!equipment.length && (
+                  <p className="p-3 text-sm text-muted-foreground">
+                    No equipment slides yet.{' '}
+                    <Link href="/manage/equipment" className="underline">
+                      Create one
+                    </Link>
+                    .
+                  </p>
+                )}
+              </div>
+            </div>
           </section>
           <section
             aria-label="Presentation order"
@@ -193,18 +253,66 @@ export default function PresentationBuilder() {
             </div>
             <p className="mb-5 text-xs leading-5 text-muted-foreground">
               Use the arrows to reorder. Choose the tank and highlighted section for each
-              technology.
+              technology. Equipment slides can go anywhere.
             </p>
             {!slides.length && (
               <p className="rounded border border-dashed border-input p-8 text-center text-sm text-muted-foreground">
-                Select technologies on the left to build your presentation.
+                Select technologies and equipment on the left to build your presentation.
               </p>
             )}
             <ol className="space-y-3">
               {slides.map((s, i) => {
-                const r = resolved.find((x) => x.technologyId === s.technologyId);
+                if (isEquipmentItem(s)) {
+                  const e = equipment.find((x) => x.id === s.equipmentId);
+                  const label = e?.name || 'Unavailable equipment slide';
+                  return (
+                    <li key={`e:${s.equipmentId}`} className="rounded border border-border p-4">
+                      <div className="flex items-center gap-3">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+                          {i + 1}
+                        </span>
+                        <h3 className="min-w-0 flex-1 text-sm font-semibold">
+                          <span className="flex items-center gap-2">
+                            <ScanLine size={14} className="shrink-0 text-primary" />
+                            {label}
+                          </span>
+                          <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+                            {e
+                              ? `Equipment slide${e.maker ? ` · ${e.maker}` : ''}`
+                              : 'Deleted from the library; it will be skipped.'}
+                          </span>
+                        </h3>
+                        <button
+                          className="tool-button !p-2"
+                          disabled={!canEdit || i === 0}
+                          aria-label={`Move ${label} up`}
+                          onClick={() => save(moveSlide(slides, i, -1))}
+                        >
+                          <ArrowUp size={15} />
+                        </button>
+                        <button
+                          className="tool-button !p-2"
+                          disabled={!canEdit || i === slides.length - 1}
+                          aria-label={`Move ${label} down`}
+                          onClick={() => save(moveSlide(slides, i, 1))}
+                        >
+                          <ArrowDown size={15} />
+                        </button>
+                        <button
+                          className="tool-button !p-2"
+                          disabled={!canEdit}
+                          aria-label={`Remove ${label} from presentation`}
+                          onClick={() => save(slides.filter((_, index) => index !== i))}
+                        >
+                          <X size={15} />
+                        </button>
+                      </div>
+                    </li>
+                  );
+                }
+                const r = resolveSlides([s], data)[0];
                 return (
-                  <li key={s.technologyId} className="rounded border border-border p-4">
+                  <li key={`t:${s.technologyId}`} className="rounded border border-border p-4">
                     <div className="flex items-center gap-3">
                       <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-bold">
                         {i + 1}
@@ -213,14 +321,6 @@ export default function PresentationBuilder() {
                         {r?.technology.name ||
                           data.find((t) => t.id === s.technologyId)?.name ||
                           'Unavailable technology'}
-                        {equipmentFor(s.technologyId).length > 0 && (
-                          <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
-                            + equipment slides:{' '}
-                            {equipmentFor(s.technologyId)
-                              .map((e) => e.name)
-                              .join(', ')}
-                          </span>
-                        )}
                       </h3>
                       <button
                         className="tool-button !p-2"

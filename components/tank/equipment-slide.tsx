@@ -1,79 +1,93 @@
 'use client';
-import Image from 'next/image';
+/* eslint-disable @next/next/no-img-element -- images can be browser-stored blobs */
 import { ScanLine } from 'lucide-react';
-import type { Equipment } from '@/lib/equipment';
-import { asset } from '@/lib/base-path';
+import { Equipment, visibleStats } from '@/lib/equipment';
+import { useImageUrl } from '@/lib/image-store';
+
+function SlideImage({
+  src,
+  alt,
+  fit,
+}: {
+  src: string;
+  alt: string;
+  fit: 'cover' | 'contain';
+}) {
+  const url = useImageUrl(src);
+  if (!url) return null;
+  return (
+    <img
+      src={url}
+      alt={alt}
+      className={`absolute inset-0 h-full w-full ${fit === 'cover' ? 'object-cover' : 'object-contain'}`}
+    />
+  );
+}
 
 /**
- * Full-width slide for one scanner. Sized with container units (see
- * `.equip` in globals.css), so it fits the presentation player and the
- * booth TV alike.
+ * Full-width slide for one piece of equipment. Sized with container units
+ * (see `.equip` in globals.css), so it fits the presentation player, the
+ * booth TV and the editor preview alike.
  */
 export default function EquipmentSlide({
   item,
-  technologyName,
+  badge,
 }: {
   item: Equipment;
-  technologyName: string;
+  /** Small label on the photo, e.g. "MFL equipment". */
+  badge?: string;
 }) {
-  const hasOutputs = item.outputs.length > 0;
+  const outputs = item.outputs.filter((o) => o.image);
+  const stats = visibleStats(item);
+  const features = item.features.filter((f) => f.trim());
   return (
-    <div className={`equip ${hasOutputs ? 'equip-with-outputs' : ''}`}>
+    <div className={`equip ${outputs.length ? 'equip-with-outputs' : ''}`}>
       <div className="equip-hero">
         {item.photo ? (
-          <Image
-            src={asset(item.photo)}
-            alt={item.photoAlt || `${item.name} scanner`}
-            fill
-            unoptimized
-            priority
-            className="object-cover"
-          />
+          <SlideImage src={item.photo} alt={`${item.name} scanner`} fit="cover" />
         ) : (
           <div className="equip-hero-placeholder" aria-hidden="true">
             <ScanLine />
-            <span>{item.name}</span>
+            <span>{item.name || 'Equipment name'}</span>
           </div>
         )}
-        <span className="equip-badge">{technologyName} equipment</span>
+        {badge && <span className="equip-badge">{badge}</span>}
       </div>
 
       <div className="equip-copy">
-        <p className="equip-maker">{item.maker}</p>
-        <h2 className="equip-name">{item.name}</h2>
-        <p className="equip-tagline">{item.tagline}</p>
-        <dl className="equip-stats">
-          {item.stats.map((s) => (
-            <div key={s.label}>
-              <dt>{s.label}</dt>
-              <dd>{s.value}</dd>
-            </div>
-          ))}
-        </dl>
-        <ul className="equip-features">
-          {item.features.map((f) => (
-            <li key={f}>{f}</li>
-          ))}
-        </ul>
-        <p className="equip-note">Manufacturer specifications.</p>
+        {item.maker && <p className="equip-maker">{item.maker}</p>}
+        <h2 className="equip-name">{item.name || 'Equipment name'}</h2>
+        {item.tagline && <p className="equip-tagline">{item.tagline}</p>}
+        {stats.length > 0 && (
+          <dl className="equip-stats">
+            {stats.map((s, i) => (
+              <div key={i}>
+                <dt>{s.label}</dt>
+                <dd>{s.value}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+        {features.length > 0 && (
+          <ul className="equip-features">
+            {features.map((f, i) => (
+              <li key={i}>{f}</li>
+            ))}
+          </ul>
+        )}
+        {stats.length > 0 && <p className="equip-note">Manufacturer specifications.</p>}
       </div>
 
-      {hasOutputs && (
+      {outputs.length > 0 && (
         <div className="equip-outputs">
           <p className="equip-outputs-title">Example outputs</p>
           <div className="equip-outputs-row">
-            {item.outputs.map((o) => (
-              <figure key={o.image}>
+            {outputs.map((o, i) => (
+              <figure key={i}>
                 <div className="equip-output-image">
-                  <Image
-                    src={asset(o.image)}
-                    alt={o.caption}
-                    fill
-                    unoptimized
-                    className="object-contain"
-                  />
+                  <SlideImage src={o.image} alt={o.caption || `${item.name} output`} fit="contain" />
                 </div>
-                <figcaption>{o.caption}</figcaption>
+                {o.caption && <figcaption>{o.caption}</figcaption>}
               </figure>
             ))}
           </div>
