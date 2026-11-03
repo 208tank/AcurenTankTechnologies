@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import './globals.css';
 import { ThemeProvider } from '@/components/theme-provider';
 import { ChunkLoadErrorHandler } from '@/components/chunk-load-error-handler';
+import { OfflineSupport } from '@/components/offline-support';
 
 // Full public address of the site (set by the GitHub workflow). Link previews
 // in email and chat apps need an absolute image URL.
@@ -36,6 +37,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         >
           {children}
           <ChunkLoadErrorHandler />
+          <OfflineSupport />
         </ThemeProvider>
       </body>
     </html>

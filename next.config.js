@@ -12,9 +12,6 @@ const nextConfig = {
   productionBrowserSourceMaps: false,
   // Static hosting has no image optimizer.
   images: { unoptimized: true },
-  // TODO: inherited from the original template. Remove once `npx tsc --noEmit`
-  // passes cleanly so type errors fail the build instead of shipping silently.
-  typescript: { ignoreBuildErrors: true },
 };
 
 module.exports = nextConfig;

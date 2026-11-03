@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowUp, ArrowDown, Play, Search, X } from 'lucide-react';
+import { ArrowUp, ArrowDown, MonitorPlay, Play, Search, X } from 'lucide-react';
 import { Section, Technology, sections, tankTypes, TankType } from '@/lib/tank-data';
 import {
   PresentationSlide,
@@ -86,14 +86,20 @@ export default function PresentationBuilder() {
               Select your methods, arrange the order, then present one technology at a time.
             </p>
           </div>
-          <button
-            className="tool-button primary-button"
-            disabled={!canEdit || !resolved.length}
-            onClick={() => setPlaying(true)}
-          >
-            <Play size={16} />
-            Start presentation
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/booth" className="tool-button">
+              <MonitorPlay size={16} />
+              Booth mode
+            </Link>
+            <button
+              className="tool-button primary-button"
+              disabled={!canEdit || !resolved.length}
+              onClick={() => setPlaying(true)}
+            >
+              <Play size={16} />
+              Start presentation
+            </button>
+          </div>
         </div>
         <p role="status" className="mb-5 text-xs text-muted-foreground">
           {saveMessage || 'Selections save automatically in this browser only.'} Library changes
