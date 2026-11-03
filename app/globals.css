@@ -91,7 +91,10 @@ textarea {
   min-height: 85px;
   resize: vertical;
 }
-input[type='checkbox'] {
+input[type='checkbox'],
+input[type='radio'] {
+  flex-shrink: 0;
+  padding: 0;
   width: 16px;
   height: 16px;
   accent-color: hsl(var(--primary));

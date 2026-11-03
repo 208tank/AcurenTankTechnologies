@@ -345,7 +345,7 @@ function BoothPlayer({ sequence, seconds, onExit }: PlayerProps) {
         if (document.visibilityState === 'visible' && !stopped)
           lock = await navigator.wakeLock.request('screen');
       } catch (e) {
-        console.error(e);
+        console.warn('Screen wake lock unavailable; turn off sleep in system settings.', e);
       }
     }
     function visible() {

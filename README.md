@@ -5,11 +5,12 @@ Acuren's tank integrity services to clients and at trade shows.
 
 ## What's in it
 
-| Screen | Path | What it does |
-| --- | --- | --- |
-| 3D Explorer | `/` | Rotate a cutaway tank (internal floating roof, external floating roof or insulated), click a section and see which inspection technologies apply. |
-| Presentation | `/present` | Pick technologies, set their order and the tank view for each, then present full screen. Arrow keys move between slides. |
-| Library | `/manage` | Edit the technology write-ups, add new ones, and export or import the library as JSON. |
+| Screen       | Path       | What it does                                                                                                                                                                                      |
+| ------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 3D Explorer  | `/`        | Rotate a cutaway tank (internal floating roof, external floating roof or insulated), click a section and see which inspection technologies apply.                                                 |
+| Presentation | `/present` | Pick technologies, set their order and the tank view for each, then present full screen. Arrow keys move between slides.                                                                          |
+| Booth mode   | `/booth`   | Loops the saved presentation (or every technology) full screen on a TV at a trade show, with a turning tank model and a contact card with a QR code. Works offline once the site has been opened. |
+| Library      | `/manage`  | Edit the technology write-ups, add new ones, and export or import the library as JSON.                                                                                                            |
 
 The technology library and the current presentation are saved in the browser
 that's running the app (local storage). They are **not** shared between
@@ -25,9 +26,12 @@ components/tank/         All TankScope screens and the 3D viewer
   tank-viewer.tsx        3D viewer: camera, lighting, section picking
   explorer.tsx           3D Explorer screen
   presentation-*.tsx     Presentation builder and full-screen player
+  booth-mode.tsx         Booth mode setup screen and TV loop
   library-manager.tsx    Library editor
 lib/tank-data.ts         Tank types, sections and the default technology library
 lib/tank-presentation.ts Saving and validating presentations
+lib/booth.ts             Booth mode settings and slide sequence
+lib/offline.ts           Registers the offline service worker (public/sw.js)
 public/branding/         Acuren logo, tagline and icons
 ```
 
@@ -53,6 +57,22 @@ yarn lint                  # ESLint
 npx prettier --write .     # format code (settings in .prettierrc)
 ```
 
+## Running booth mode at a trade show
+
+1. On the computer driving the TV, open the site while online, build the
+   presentation you want (or choose **All technologies**), then open
+   **Booth mode** from the presentation screen. Wait for **Ready to run
+   offline**.
+2. Turn off sleep and the screen saver on that computer.
+3. Click **Start booth mode**, and press **F11** so the browser itself stays
+   full screen.
+4. While it runs: **Space** pauses, **←/→** step, **Esc** returns to setup.
+
+To start straight into the loop (for example from a kiosk-mode shortcut), open
+`/booth/?autostart=1`. Settings and the presentation are saved in that browser.
+
+If you change `public/sw.js`, bump its `VERSION` so browsers drop old copies.
+
 ## Hosting
 
 The site is published free on GitHub Pages at
@@ -60,7 +80,9 @@ The site is published free on GitHub Pages at
 
 `.github/workflows/deploy.yml` builds the site as plain static files and
 publishes it every time `main` changes. Pull requests are built as a check but
-not published. You can follow each run on the repo's **Actions** tab.
+not published. Pushes to any other branch also build a preview of the site into
+the `site-preview` branch (`.github/workflows/preview.yml`) for testing before
+merging. You can follow each run on the repo's **Actions** tab.
 
 One-time setup: in the repo's **Settings → Pages**, set **Source** to
 **GitHub Actions**.

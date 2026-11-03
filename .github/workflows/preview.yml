@@ -1,6 +1,6 @@
 # Maintainer tool: on every push to a work branch, build the static site and
 # push it to the `site-preview` branch so it can be downloaded and tested
-# before merging. Also reports TypeScript errors without failing.
+# before merging.
 name: Build preview
 
 on:
@@ -29,9 +29,6 @@ jobs:
         run: |
           corepack enable
           yarn install
-
-      - name: Type check (report only)
-        run: yarn tsc --noEmit || echo "::warning::TypeScript reported errors (see log above)."
 
       - name: Build static site
         run: yarn build
