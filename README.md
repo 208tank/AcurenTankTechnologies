@@ -20,7 +20,7 @@ move it to another laptop.
 ## Project layout
 
 ```text
-app/                     Routes: / (explorer), /present, /manage
+app/                     Routes: / (explorer), /present, /booth, /manage
 components/tank/         All TankScope screens and the 3D viewer
   build-tank.ts          Builds the tank model in three.js (no model files needed)
   tank-viewer.tsx        3D viewer: camera, lighting, section picking
