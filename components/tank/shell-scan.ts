@@ -6,8 +6,9 @@ import * as THREE from 'three';
  *  - ut:    conventional UT readings, a strip at each settlement station with a reading
  *           every foot up the shell, coloured against nominal and t-min
  *  - aut:   an automated UT C-scan band at each station (remaining wall, % of nominal)
- *  - laser: a 3D laser scan of the shell, coloured by radial deviation, showing peaking
- *           at the vertical welds, banding at the girth welds and one large dent
+ *  - laser: a 3D laser scan of the shell, its surface shaped and coloured by radial
+ *           deviation: peaking at the vertical welds, banding at the girth welds and one
+ *           large bulge
  *
  * The UT readings and the C-scan sample the same thickness field, so they agree.
  * All data is illustrative and generated from fixed seeds.
@@ -276,8 +277,8 @@ function paintAUT(no: number, deg: number) {
 
 /* ---------------------------------------------------------------- laser deviation --- */
 
-/** The large deformation: an inward dent on course 3. */
-export const DENT = { deg: 26, ft: 20.5, w: 0.8, h: 0.75 };
+/** The large deformation: an outward bulge on course 3. */
+export const BULGE = { deg: 26, ft: 20.5, w: 0.8, h: 0.75 };
 /** Display exaggeration of radial deviation (mm → model units). */
 const EXAG = (R / (R * FT_PER_UNIT * 304.8)) * 12;
 export const LASER_EXAGGERATION = 12;
@@ -305,17 +306,17 @@ export function deviation(theta: number, y: number) {
   }
   // Out of round, growing toward the top.
   mm += 12 * Math.cos(2 * theta + 0.4) * (0.3 + 0.7 * ((y - Y0) / COURSES)) + 4 * Math.cos(3 * theta + 1.1);
-  // The dent.
-  let dt = theta - rad(DENT.deg);
+  // The bulge.
+  let dt = theta - rad(BULGE.deg);
   dt = Math.atan2(Math.sin(dt), Math.cos(dt)) * R;
-  const dy = y - yOf(DENT.ft);
-  const e = (dt / DENT.w) ** 2 + (dy / DENT.h) ** 2;
-  mm += -82 * Math.exp(-e * 1.2) * (1 + 0.08 * Math.sin(dt * 9));
+  const dy = y - yOf(BULGE.ft);
+  const e = (dt / BULGE.w) ** 2 + (dy / BULGE.h) ** 2;
+  mm += 82 * Math.exp(-e * 1.2) * (1 + 0.08 * Math.sin(dt * 9));
   mm += (n3(theta * 18, y * 5) - 0.5) * 3;
   return mm;
 }
-/** Deepest point of the dent, for the legend. */
-export const dentDepth = Math.round(deviation(rad(DENT.deg), yOf(DENT.ft)));
+/** Height of the bulge at its crown, for the legend. */
+export const bulgeHeight = Math.round(deviation(rad(BULGE.deg), yOf(BULGE.ft)));
 
 /* ------------------------------------------------------------------------ 3D objects --- */
 

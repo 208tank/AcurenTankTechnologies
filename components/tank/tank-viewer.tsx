@@ -7,14 +7,14 @@ import { buildTank, palette } from './build-tank';
 import { LOWER_THRESHOLD, WELD_DISCONTINUITY, scanBins } from './floor-scan';
 import {
   AUT_NODATA,
-  DENT,
+  BULGE,
   LASER_EXAGGERATION,
   NOM_IN,
   STATIONS,
   type ShellMode,
   autGradient,
   autStops,
-  dentDepth,
+  bulgeHeight,
   laserGradient,
   laserStops,
   shellModes,
@@ -40,7 +40,9 @@ type Props = {
   onShellView?: (mode: ShellMode | null) => void;
 };
 const MODES: ShellMode[] = ['ut', 'aut', 'laser'];
-/** Seconds for a shell view to fade in or out. */
+/** Seconds for the roof and floor to move away when the shell opens. */
+const SHELL_OPEN_TIME = 2.4;
+/** Seconds to cross-fade between shell views. */
 const SHELL_TIME = 0.9;
 /** Seconds for the full open (or close) of the floor view. */
 const REVEAL_TIME = 2.6;
@@ -164,7 +166,9 @@ export default function TankViewer({
       return { group, mats, fading: false, shadows: true };
     };
     const parts = fadeOf(tank.shellParts);
-    const extras = fadeOf(tank.extras);
+    const roof = fadeOf(tank.roofParts);
+    const fittings = fadeOf(tank.fittings);
+    const floorParts = fadeOf(tank.floorParts);
     function setFade(f: Fade, k: number) {
       f.group.visible = k > 0.005;
       const nowFading = k < 1;
@@ -188,21 +192,30 @@ export default function TankViewer({
     // so a rebuild (tank type or cutaway change) replays the reveal.
     let reveal = 0;
     let revealTarget = floorState.current ? 1 : 0;
-    // Shell views: each has its own level so switching cross-fades.
+    // Shell: `shellOpen` moves the roof up and the floor down and away (0 … 1); each view
+    // then has its own level so switching views cross-fades.
+    let shellOpen = 0;
+    let shellOpenTarget = 0;
     const level: Record<ShellMode, number> = { ut: 0, aut: 0, laser: 0 };
     const levelTarget: Record<ShellMode, number> = { ut: 0, aut: 0, laser: 0 };
     function applyFades() {
       const lift = smooth(0, 0.55, reveal);
       const floorFade = 1 - smooth(0.04, 0.45, reveal);
       tank.upper.position.y = lift * 9;
-      const any = Math.max(level.ut, level.aut, level.laser);
-      setFade(extras, floorFade * (1 - smooth(0, 0.7, any)));
-      setFade(parts, floorFade * (1 - smooth(0.1, 0.9, level.laser)));
+      const away = smooth(0, 0.6, shellOpen);
+      const gone = smooth(0.05, 0.5, shellOpen);
+      const show = smooth(0.45, 1, shellOpen);
+      tank.roofParts.position.y = away * 7;
+      tank.floorParts.position.y = -away * 3.5;
+      setFade(roof, floorFade * (1 - gone));
+      setFade(fittings, floorFade * (1 - gone));
+      setFade(floorParts, 1 - gone);
+      setFade(parts, floorFade * (1 - smooth(0.1, 0.9, level.laser) * show));
       tank.floorScan.setReveal(smooth(0.3, 1, reveal));
       tank.shellScan.setLevels({
-        ut: smooth(0.2, 1, level.ut),
-        aut: smooth(0.2, 1, level.aut),
-        laser: smooth(0.1, 0.9, level.laser),
+        ut: smooth(0.2, 1, level.ut) * show,
+        aut: smooth(0.2, 1, level.aut) * show,
+        laser: smooth(0.1, 0.9, level.laser) * show,
       });
     }
     applyFades();
@@ -311,7 +324,8 @@ export default function TankViewer({
         }
       },
       shell: (mode: ShellMode | null) => {
-        const wasOpen = MODES.some((m) => levelTarget[m] > 0);
+        const wasOpen = shellOpenTarget > 0;
+        shellOpenTarget = mode ? 1 : 0;
         for (const m of MODES) levelTarget[m] = m === mode ? 1 : 0;
         if (mode && !wasOpen) {
           // Come in closer so the strips are readable, keeping the viewing direction.
@@ -355,6 +369,14 @@ export default function TankViewer({
             : Math.max(revealTarget, reveal - step * 1.6);
         changed = true;
       }
+      if (shellOpen !== shellOpenTarget) {
+        const step = dt / SHELL_OPEN_TIME;
+        shellOpen =
+          shellOpenTarget > shellOpen
+            ? Math.min(1, shellOpen + step)
+            : Math.max(0, shellOpen - step * 1.6);
+        changed = true;
+      }
       for (const m of MODES) {
         if (level[m] === levelTarget[m]) continue;
         const step = dt / SHELL_TIME;
@@ -380,7 +402,7 @@ export default function TankViewer({
         const hidden =
           !labelState.current ||
           reveal > 0.02 ||
-          Math.max(level.ut, level.aut, level.laser) > 0.02 ||
+          shellOpen > 0.02 ||
           (type === 'efr' && s.id === 'roof') ||
           p.z > 1 ||
           p.z < -1;
@@ -584,8 +606,8 @@ export default function TankViewer({
               <li>Peaking at the vertical welds</li>
               <li>Banding at the girth welds</li>
               <li>
-                Dent, {dentDepth} mm at {DENT.deg}°, {DENT.ft} ft up (course{' '}
-                {Math.floor(DENT.ft / 8) + 1})
+                Bulge, +{bulgeHeight} mm at {BULGE.deg}°, {BULGE.ft} ft up (course{' '}
+                {Math.floor(BULGE.ft / 8) + 1})
               </li>
             </ul>
           </div>
