@@ -25,7 +25,7 @@ app/                     Routes: / (explorer), /present, /booth, /manage
 components/tank/         All TankScope screens and the 3D viewer
   build-tank.ts          Builds the tank model in three.js (no model files needed)
   tank-viewer.tsx        3D viewer: camera, lighting, section picking
-  floor-scan.ts          Floor C-scan view: MFL-style plate scan image and indication pins
+  floor-scan.ts          Floor C-scan view: Floormap-style top and bottom discontinuity plot
   explorer.tsx           3D Explorer screen
   presentation-*.tsx     Presentation builder and full-screen player
   booth-mode.tsx         Booth mode setup screen and TV loop

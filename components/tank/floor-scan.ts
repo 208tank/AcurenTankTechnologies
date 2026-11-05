@@ -5,8 +5,7 @@ import * as THREE from 'three';
  * is painted like an Eddyfi / Silverwing Floormap "Tank Floor Layout Showing Top and
  * Bottom Discontinuities" plot: light-grey scan tracks along each plate with ragged
  * ends and white unscanned gaps, black plate outlines, and discontinuities drawn as
- * pixel speckle in banded colours (yellow 20–29 % up to red 80 %+). The deeper calls
- * also get 3D pins.
+ * pixel speckle in banded colours (yellow 20–29 % up to red 80 %+).
  *
  * The data is illustrative only. It is generated from a fixed seed so the same
  * floor appears every time.
@@ -39,8 +38,6 @@ export const scanBins: { from: number; to: number; color: string }[] = [
 /** Lowest wall loss shown (the scanner's lower threshold). */
 export const LOWER_THRESHOLD = 20;
 export const WELD_DISCONTINUITY = '#e00000';
-/** Wall loss (%) at which a call gets a 3D pin. */
-export const PIN_MIN = 50;
 
 const WHITE = [250, 250, 250];
 const TRACK = [226, 227, 229];
@@ -436,72 +433,12 @@ export function buildFloorScan() {
   scan.renderOrder = 1;
   group.add(scan);
 
-  // Pins on the deeper calls, coloured by their band.
-  const pinMat = new THREE.MeshBasicMaterial({ color: 0x2a2f35, transparent: true, opacity: 0 });
-  const stem = new THREE.CylinderGeometry(0.011, 0.011, 1, 6);
-  stem.translate(0, 0.5, 0);
-  const sphere = new THREE.SphereGeometry(0.065, 18, 12);
-  const ringGeo = new THREE.RingGeometry(0.07, 0.095, 32);
-  ringGeo.rotateX(-Math.PI / 2);
-  const pins = scanIndications
-    .filter((d) => d.loss >= PIN_MIN)
-    .map((d, i) => {
-      const height = 0.25 + (d.loss / 100) * 0.7;
-      const pin = new THREE.Group();
-      pin.position.set(d.x, FLOOR.y + 0.002, d.z);
-      const color = lossColor(d.loss);
-      const headMat = new THREE.MeshStandardMaterial({
-        color,
-        emissive: color,
-        emissiveIntensity: 0.35,
-        roughness: 0.35,
-        metalness: 0.1,
-        transparent: true,
-        opacity: 0,
-      });
-      const ringMat = new THREE.MeshBasicMaterial({
-        color,
-        transparent: true,
-        opacity: 0,
-        toneMapped: false,
-        depthWrite: false,
-      });
-      const head = new THREE.Mesh(sphere, headMat);
-      head.castShadow = true;
-      const ring = new THREE.Mesh(ringGeo, ringMat);
-      ring.position.y = 0.002;
-      pin.add(new THREE.Mesh(stem, pinMat), head, ring);
-      pin.userData = { height, headMat, ringMat, delay: (i * 0.618) % 1 };
-      group.add(pin);
-      return pin;
-    });
-
   return {
     group,
-    pinCount: pins.length,
-    /** t = 0 hidden … 1 fully shown: scan fades in first, then the pins rise one after another. */
+    /** t = 0 hidden … 1 fully shown. */
     setReveal(t: number) {
       group.visible = t > 0.001;
-      scanMat.opacity = smooth(0, 0.45, t);
-      let anyPin = 0;
-      for (const pin of pins) {
-        const { height, headMat, ringMat, delay } = pin.userData as {
-          height: number;
-          headMat: THREE.MeshStandardMaterial;
-          ringMat: THREE.MeshBasicMaterial;
-          delay: number;
-        };
-        const k = smooth(0.4 + delay * 0.45, 0.55 + delay * 0.45, t);
-        pin.visible = k > 0.001;
-        const [stemMesh, headMesh] = pin.children;
-        stemMesh.scale.y = Math.max(0.001, height * k);
-        headMesh.position.y = height * k;
-        headMesh.scale.setScalar(0.4 + 0.6 * k);
-        headMat.opacity = k;
-        ringMat.opacity = k * 0.95;
-        anyPin = Math.max(anyPin, k);
-      }
-      pinMat.opacity = anyPin * 0.85;
+      scanMat.opacity = smooth(0, 0.7, t);
     },
     dispose() {
       texture.dispose();

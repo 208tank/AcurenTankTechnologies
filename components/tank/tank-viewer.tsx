@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { buildTank, palette } from './build-tank';
-import { LOWER_THRESHOLD, PIN_MIN, WELD_DISCONTINUITY, scanBins } from './floor-scan';
+import { LOWER_THRESHOLD, WELD_DISCONTINUITY, scanBins } from './floor-scan';
 import { Section, TankType, sections } from '@/lib/tank-data';
 type Props = {
   type: TankType;
@@ -409,8 +409,7 @@ export default function TankViewer({
           </span>
         </div>
         <div className="mt-3 border-t border-border pt-2 text-[9px] text-muted-foreground">
-          Wall loss, % of nominal. Lower threshold {LOWER_THRESHOLD}%. Pins mark calls of {PIN_MIN}%
-          and over. Illustrative data.
+          Wall loss, % of nominal. Lower threshold {LOWER_THRESHOLD}%. Illustrative data.
         </div>
       </div>
       {error && (
