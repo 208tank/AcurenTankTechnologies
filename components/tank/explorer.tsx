@@ -1,7 +1,7 @@
 'use client';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Maximize,
   Minimize,
@@ -23,6 +23,13 @@ import {
 } from 'lucide-react';
 import { Section, TankType, sections, tankTypes, applicable } from '@/lib/tank-data';
 import { useTankData } from './use-tank-data';
+import type { ShellMode } from './shell-scan';
+
+const SHELL_VIEW_NAMES: Record<ShellMode, string> = {
+  ut: 'UT READINGS',
+  aut: 'AUT C-SCAN',
+  laser: '3D LASER SCAN',
+};
 import AppHeader from './app-header';
 import BrandFooter from './brand-footer';
 import TechnologyCard from './technology-card';
@@ -62,6 +69,13 @@ export default function Explorer() {
   const [reset, setReset] = useState(0);
   // Floor C-scan view: opens when the user picks the floor, not on first load.
   const [floorOpen, setFloorOpen] = useState(false);
+  // Shell inspection view (UT readings, AUT C-scan or laser scan): opens when the user picks the shell.
+  const [shellMode, setShellMode] = useState<ShellMode | null>(null);
+  const lastShellMode = useRef<ShellMode>('ut');
+  const showShell = useCallback((m: ShellMode | null) => {
+    if (m) lastShellMode.current = m;
+    setShellMode(m);
+  }, []);
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState<string | null>('mfl');
   const [full, setFull] = useState(false);
@@ -75,6 +89,9 @@ export default function Explorer() {
   const choose = useCallback((s: Section) => {
     setSelected(s);
     setFloorOpen(s === 'floor');
+    setShellMode((m) => (s === 'shell' ? (m ?? lastShellMode.current) : null));
+    // The shell views wrap the whole shell, so show it uncut.
+    if (s === 'shell') setCutaway(false);
     setPanel(true);
     setQuery('');
     setOpen(null);
@@ -167,6 +184,8 @@ export default function Explorer() {
               labels={labels}
               floorView={floorOpen}
               onCloseFloor={() => setFloorOpen(false)}
+              shellView={shellMode}
+              onShellView={showShell}
             />
             <div className="absolute left-5 right-5 top-5">
               <div className="mb-3 flex items-center justify-between">
@@ -205,7 +224,13 @@ export default function Explorer() {
             </div>
             <div className="absolute left-5 top-[133px] flex items-center gap-2">
               <span className="rounded border border-border bg-card/80 px-2 py-1 font-mono text-[9px] tracking-wider text-muted-foreground">
-                {floorOpen ? 'FLOOR SCAN VIEW' : cutaway ? 'CUTAWAY VIEW' : 'EXTERIOR VIEW'}
+                {floorOpen
+                  ? 'FLOOR SCAN VIEW'
+                  : shellMode
+                    ? `SHELL · ${SHELL_VIEW_NAMES[shellMode]}`
+                    : cutaway
+                      ? 'CUTAWAY VIEW'
+                      : 'EXTERIOR VIEW'}
               </span>
               <span className="font-mono text-[9px] text-muted-foreground">
                 {type === 'insulated' ? 'INS' : type.toUpperCase()} / STEEL PONTOON
@@ -218,6 +243,7 @@ export default function Explorer() {
                 className="tool-button !p-2.5"
                 onClick={() => {
                   setFloorOpen(false);
+                  setShellMode(null);
                   setReset((n) => n + 1);
                 }}
               >

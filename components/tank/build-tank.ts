@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { Section, TankType } from '@/lib/tank-data';
 import { buildFloorScan } from './floor-scan';
+import { buildShellScan } from './shell-scan';
 export const palette = {
   steel: 0x9aaab3,
   inner: 0x72828e,
@@ -18,6 +19,11 @@ export function buildTank(type: TankType, cutaway: boolean) {
   // viewer can lift it away and show the floor scan. Floor parts are added to `root`.
   const upper = new THREE.Group();
   root.add(upper);
+  // Inside `upper`: the shell plates themselves, and everything else (roofs, stair,
+  // rails, nozzles), so the shell views can fade each separately.
+  const shellParts = new THREE.Group();
+  const extras = new THREE.Group();
+  upper.add(shellParts, extras);
   let parent: THREE.Group = root;
   const targets: THREE.Mesh[] = [];
   const start = cutaway ? 1.62 : 0,
@@ -66,10 +72,11 @@ export function buildTank(type: TankType, cutaway: boolean) {
   }
   // Floor seams get their own material so fading the shell's seams leaves them alone.
   const floorSeam = seam.clone();
+  const shellSeam = seam.clone();
   function line(points: THREE.Vector3[]) {
     const l = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints(points),
-      parent === root ? floorSeam : seam,
+      parent === root ? floorSeam : parent === shellParts ? shellSeam : seam,
     );
     parent.add(l);
     return l;
@@ -137,7 +144,9 @@ export function buildTank(type: TankType, cutaway: boolean) {
   }
   const floorScan = buildFloorScan();
   root.add(floorScan.group);
-  parent = upper;
+  const shellScan = buildShellScan(start, span);
+  root.add(shellScan.group);
+  parent = shellParts;
   // Individual plate courses preserve subtle differences in steel response.
   for (let c = 0; c < 6; c++) {
     const mat = steel.clone();
@@ -178,6 +187,7 @@ export function buildTank(type: TankType, cutaway: boolean) {
       }
     }
   }
+  parent = extras;
   const fy = type === 'efr' ? 4.55 : 3.75;
   const fmat = deck.clone();
   fmat.color.setHex(0x84959d);
@@ -310,7 +320,10 @@ export function buildTank(type: TankType, cutaway: boolean) {
   return {
     root,
     upper,
+    shellParts,
+    extras,
     floorScan,
+    shellScan,
     targets,
     anchors: {
       floor: new THREE.Vector3(2, 0.1, 3.8),

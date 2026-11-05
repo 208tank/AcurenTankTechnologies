@@ -5,6 +5,21 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { buildTank, palette } from './build-tank';
 import { LOWER_THRESHOLD, WELD_DISCONTINUITY, scanBins } from './floor-scan';
+import {
+  AUT_NODATA,
+  DENT,
+  LASER_EXAGGERATION,
+  NOM_IN,
+  STATIONS,
+  type ShellMode,
+  autGradient,
+  autStops,
+  dentDepth,
+  laserGradient,
+  laserStops,
+  shellModes,
+  utStatus,
+} from './shell-scan';
 import { Section, TankType, sections } from '@/lib/tank-data';
 type Props = {
   type: TankType;
@@ -19,7 +34,14 @@ type Props = {
   floorView?: boolean;
   /** Called from the "Show full tank" button on the floor legend. */
   onCloseFloor?: () => void;
+  /** Shell inspection view to show, or null for the normal tank. */
+  shellView?: ShellMode | null;
+  /** Called when the user picks another shell view, or closes it (null). */
+  onShellView?: (mode: ShellMode | null) => void;
 };
+const MODES: ShellMode[] = ['ut', 'aut', 'laser'];
+/** Seconds for a shell view to fade in or out. */
+const SHELL_TIME = 0.9;
 /** Seconds for the full open (or close) of the floor view. */
 const REVEAL_TIME = 2.6;
 const smooth = (a: number, b: number, t: number) => {
@@ -36,6 +58,8 @@ export default function TankViewer({
   autoRotate = false,
   floorView = false,
   onCloseFloor,
+  shellView = null,
+  onShellView,
 }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const pins = useRef<Partial<Record<Section, HTMLButtonElement | null>>>({});
@@ -43,10 +67,12 @@ export default function TankViewer({
   const selection = useRef(selected);
   const labelState = useRef(labels);
   const floorState = useRef(floorView);
+  const shellState = useRef(shellView);
   const api = useRef<{
     focus: (s: Section) => void;
     reset: () => void;
     floor: (open: boolean) => void;
+    shell: (mode: ShellMode | null) => void;
   } | null>(null);
   const [error, setError] = useState('');
   // Bumped to rebuild the scene after the browser drops the WebGL context
@@ -119,44 +145,67 @@ export default function TankViewer({
     scene.add(fill);
     const tank = buildTank(type, cutaway);
     scene.add(tank.root);
-    // Materials of everything above the floor, with their normal opacity, for fading.
-    const upperMats = new Map<THREE.Material, { opacity: number; transparent: boolean }>();
-    tank.upper.traverse((o) => {
-      const m = (o as THREE.Mesh).material;
-      if (!m) return;
-      for (const mat of Array.isArray(m) ? m : [m])
-        upperMats.set(mat, { opacity: mat.opacity, transparent: mat.transparent });
-    });
+    // Fading: the floor view lifts and fades everything above the floor; the shell views
+    // fade the roofs, stair and fittings, and the laser view also replaces the shell plates.
+    type Fade = {
+      group: THREE.Group;
+      mats: Map<THREE.Material, { opacity: number; transparent: boolean }>;
+      fading: boolean;
+      shadows: boolean;
+    };
+    const fadeOf = (group: THREE.Group): Fade => {
+      const mats = new Map<THREE.Material, { opacity: number; transparent: boolean }>();
+      group.traverse((o) => {
+        const m = (o as THREE.Mesh).material;
+        if (!m) return;
+        for (const mat of Array.isArray(m) ? m : [m])
+          mats.set(mat, { opacity: mat.opacity, transparent: mat.transparent });
+      });
+      return { group, mats, fading: false, shadows: true };
+    };
+    const parts = fadeOf(tank.shellParts);
+    const extras = fadeOf(tank.extras);
+    function setFade(f: Fade, k: number) {
+      f.group.visible = k > 0.005;
+      const nowFading = k < 1;
+      for (const [mat, base] of f.mats) {
+        if (nowFading !== f.fading) {
+          mat.transparent = nowFading || base.transparent;
+          mat.needsUpdate = true;
+        }
+        mat.opacity = base.opacity * k;
+      }
+      f.fading = nowFading;
+      const wantShadows = k > 0.8;
+      if (wantShadows !== f.shadows) {
+        f.shadows = wantShadows;
+        f.group.traverse((o) => {
+          if ((o as THREE.Mesh).isMesh) o.castShadow = wantShadows;
+        });
+      }
+    }
     // 0 = whole tank … 1 = floor open. Always starts closed and animates to the target,
     // so a rebuild (tank type or cutaway change) replays the reveal.
     let reveal = 0;
     let revealTarget = floorState.current ? 1 : 0;
-    let fading = false;
-    let shadows = true;
-    function applyReveal(t: number) {
-      const lift = smooth(0, 0.55, t);
-      const fade = 1 - smooth(0.04, 0.45, t);
+    // Shell views: each has its own level so switching cross-fades.
+    const level: Record<ShellMode, number> = { ut: 0, aut: 0, laser: 0 };
+    const levelTarget: Record<ShellMode, number> = { ut: 0, aut: 0, laser: 0 };
+    function applyFades() {
+      const lift = smooth(0, 0.55, reveal);
+      const floorFade = 1 - smooth(0.04, 0.45, reveal);
       tank.upper.position.y = lift * 9;
-      tank.upper.visible = fade > 0.005;
-      const nowFading = t > 0;
-      for (const [mat, base] of upperMats) {
-        if (nowFading !== fading) {
-          mat.transparent = nowFading || base.transparent;
-          mat.needsUpdate = true;
-        }
-        mat.opacity = base.opacity * (nowFading ? fade : 1);
-      }
-      fading = nowFading;
-      const wantShadows = t < 0.2;
-      if (wantShadows !== shadows) {
-        shadows = wantShadows;
-        tank.upper.traverse((o) => {
-          if ((o as THREE.Mesh).isMesh) o.castShadow = wantShadows;
-        });
-      }
-      tank.floorScan.setReveal(smooth(0.3, 1, t));
+      const any = Math.max(level.ut, level.aut, level.laser);
+      setFade(extras, floorFade * (1 - smooth(0, 0.7, any)));
+      setFade(parts, floorFade * (1 - smooth(0.1, 0.9, level.laser)));
+      tank.floorScan.setReveal(smooth(0.3, 1, reveal));
+      tank.shellScan.setLevels({
+        ut: smooth(0.2, 1, level.ut),
+        aut: smooth(0.2, 1, level.aut),
+        laser: smooth(0.1, 0.9, level.laser),
+      });
     }
-    applyReveal(0);
+    applyFades();
     const plane = new THREE.Mesh(
       new THREE.PlaneGeometry(100, 100),
       new THREE.ShadowMaterial({ opacity: 0.28 }),
@@ -195,9 +244,13 @@ export default function TankViewer({
       ray.setFromCamera(mouse, camera);
       // While the floor is open the rest of the tank is gone, so there is nothing to pick.
       if (floorState.current) return undefined;
-      return ray.intersectObjects(tank.targets, false)?.[0]?.object?.userData?.section as
-        | Section
-        | undefined;
+      // Skip anything faded out of view (the roof while a shell view is open).
+      const shown = (o: THREE.Object3D | null) => {
+        for (let p = o; p; p = p.parent) if (!p.visible) return false;
+        return true;
+      };
+      return ray.intersectObjects(tank.targets.filter(shown), false)?.[0]?.object?.userData
+        ?.section as Section | undefined;
     }
     function move(e: PointerEvent) {
       hovered = hit(e) ?? null;
@@ -257,8 +310,24 @@ export default function TankViewer({
           api.current?.focus(selection.current);
         }
       },
+      shell: (mode: ShellMode | null) => {
+        const wasOpen = MODES.some((m) => levelTarget[m] > 0);
+        for (const m of MODES) levelTarget[m] = m === mode ? 1 : 0;
+        if (mode && !wasOpen) {
+          // Come in closer so the strips are readable, keeping the viewing direction.
+          const flat = camera.position.clone().sub(controls.target).setY(0);
+          if (flat.lengthSq() < 1e-6) flat.set(0, 0, 1);
+          flat.normalize();
+          targetTween = new THREE.Vector3(0, 3.1, 0);
+          tween = targetTween
+            .clone()
+            .add(flat.multiplyScalar(17.5))
+            .add(new THREE.Vector3(0, 3.2, 0));
+        }
+      },
     };
     if (revealTarget) api.current.floor(true);
+    if (shellState.current) api.current.shell(shellState.current);
     const clock = new THREE.Clock();
     let frame = 0;
     let dead = false;
@@ -276,6 +345,7 @@ export default function TankViewer({
         if (controls.target.distanceTo(targetTween) < 0.01) targetTween = null;
       }
       controls.update(dt);
+      let changed = false;
       if (reveal !== revealTarget) {
         const step = dt / REVEAL_TIME;
         // Closing runs a little faster than opening.
@@ -283,8 +353,18 @@ export default function TankViewer({
           revealTarget > reveal
             ? Math.min(revealTarget, reveal + step)
             : Math.max(revealTarget, reveal - step * 1.6);
-        applyReveal(reveal);
+        changed = true;
       }
+      for (const m of MODES) {
+        if (level[m] === levelTarget[m]) continue;
+        const step = dt / SHELL_TIME;
+        level[m] =
+          levelTarget[m] > level[m]
+            ? Math.min(levelTarget[m], level[m] + step)
+            : Math.max(levelTarget[m], level[m] - step);
+        changed = true;
+      }
+      if (changed) applyFades();
       for (const o of tank.targets) {
         const material = o.material as THREE.MeshStandardMaterial;
         const s = o.userData?.section;
@@ -300,6 +380,7 @@ export default function TankViewer({
         const hidden =
           !labelState.current ||
           reveal > 0.02 ||
+          Math.max(level.ut, level.aut, level.laser) > 0.02 ||
           (type === 'efr' && s.id === 'roof') ||
           p.z > 1 ||
           p.z < -1;
@@ -334,6 +415,7 @@ export default function TankViewer({
       });
       mats.forEach((m) => m.dispose());
       tank.floorScan.dispose();
+      tank.shellScan.dispose();
       env.dispose();
       renderer.dispose();
       // Release the GPU context now rather than waiting for garbage collection;
@@ -347,6 +429,20 @@ export default function TankViewer({
     floorState.current = floorView;
     api.current?.floor(floorView);
   }, [floorView]);
+  useEffect(() => {
+    if (shellState.current === shellView) return;
+    shellState.current = shellView;
+    api.current?.shell(shellView);
+  }, [shellView]);
+  const shellOpen = !!shellView;
+  const mode = shellView ?? 'ut';
+  const ticks = (stops: [number, string][], step: number, unit: string, plus = false) => {
+    const lo = stops[0][0],
+      hi = stops[stops.length - 1][0],
+      out: string[] = [];
+    for (let v = lo; v <= hi + 1e-9; v += step) out.push(`${plus && v > 0 ? '+' : ''}${v}${unit}`);
+    return out;
+  };
   return (
     <>
       <div
@@ -410,6 +506,92 @@ export default function TankViewer({
         </div>
         <div className="mt-3 border-t border-border pt-2 text-[9px] text-muted-foreground">
           Wall loss, % of nominal. Lower threshold {LOWER_THRESHOLD}%. Illustrative data.
+        </div>
+      </div>
+      <div
+        className={`floor-legend shell-panel ${shellOpen ? 'open' : ''}`}
+        aria-hidden={!shellOpen}
+        role="group"
+        aria-label="Shell inspection"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <span className="eyebrow">Shell inspection</span>
+          {onShellView && (
+            <button
+              className="tool-button !px-2 !py-1 text-[10px]"
+              onClick={() => onShellView(null)}
+              tabIndex={shellOpen ? 0 : -1}
+            >
+              Show full tank
+            </button>
+          )}
+        </div>
+        <div className="shell-modes mt-3" role="group" aria-label="Shell view">
+          {shellModes.map((m) => (
+            <button
+              key={m.id}
+              aria-pressed={mode === m.id}
+              tabIndex={shellOpen ? 0 : -1}
+              onClick={() => onShellView?.(m.id)}
+            >
+              {m.name}
+            </button>
+          ))}
+        </div>
+        {mode === 'ut' && (
+          <div className="mt-3 grid gap-1.5 text-[10px]">
+            {utStatus.map((st) => (
+              <span key={st.id} className="flex items-center gap-2">
+                <span className="floor-key-swatch" style={{ background: st.fill }} />
+                {st.label}
+              </span>
+            ))}
+            <p className="mt-1 text-[9px] text-muted-foreground">
+              {STATIONS.length} settlement stations, one reading every foot, inches. Nominal{' '}
+              {NOM_IN[0].toFixed(3)} in (course 1) to {NOM_IN[NOM_IN.length - 1].toFixed(3)} in
+              (course {NOM_IN.length}).
+            </p>
+          </div>
+        )}
+        {mode === 'aut' && (
+          <div className="mt-3 text-[10px]">
+            <div className="h-2.5 rounded-sm" style={{ background: autGradient }} />
+            <div className="mt-1 flex justify-between font-mono text-[9px] text-muted-foreground">
+              {ticks(autStops, 10, '%').map((t) => (
+                <span key={t}>{t}</span>
+              ))}
+            </div>
+            <div className="mt-1 text-[9px] text-muted-foreground">Remaining wall, % of nominal</div>
+            <span className="mt-2 flex items-center gap-2">
+              <span className="floor-key-swatch" style={{ background: AUT_NODATA }} /> No data
+              (girth weld caps)
+            </span>
+          </div>
+        )}
+        {mode === 'laser' && (
+          <div className="mt-3 text-[10px]">
+            <div className="h-2.5 rounded-sm" style={{ background: laserGradient }} />
+            <div className="mt-1 flex justify-between font-mono text-[9px] text-muted-foreground">
+              {ticks(laserStops, 20, '', true).map((t) => (
+                <span key={t}>{t}</span>
+              ))}
+            </div>
+            <div className="mt-1 text-[9px] text-muted-foreground">
+              Radial deviation from a true cylinder, mm (+ outward). Shape exaggerated ×
+              {LASER_EXAGGERATION}.
+            </div>
+            <ul className="mt-2 grid gap-1">
+              <li>Peaking at the vertical welds</li>
+              <li>Banding at the girth welds</li>
+              <li>
+                Dent, {dentDepth} mm at {DENT.deg}°, {DENT.ft} ft up (course{' '}
+                {Math.floor(DENT.ft / 8) + 1})
+              </li>
+            </ul>
+          </div>
+        )}
+        <div className="mt-3 border-t border-border pt-2 text-[9px] text-muted-foreground">
+          Illustrative data.
         </div>
       </div>
       {error && (
