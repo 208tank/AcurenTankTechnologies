@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { buildTank, palette } from './build-tank';
+import { SCALE_MAX, scanGradient } from './floor-scan';
 import { Section, TankType, sections } from '@/lib/tank-data';
 type Props = {
   type: TankType;
@@ -14,6 +15,16 @@ type Props = {
   labels: boolean;
   /** Slowly orbit the tank, for unattended booth displays. */
   autoRotate?: boolean;
+  /** Lift the shell and roof away and show the floor C-scan. */
+  floorView?: boolean;
+  /** Called from the "Show full tank" button on the floor legend. */
+  onCloseFloor?: () => void;
+};
+/** Seconds for the full open (or close) of the floor view. */
+const REVEAL_TIME = 2.6;
+const smooth = (a: number, b: number, t: number) => {
+  const k = Math.min(1, Math.max(0, (t - a) / (b - a)));
+  return k * k * (3 - 2 * k);
 };
 export default function TankViewer({
   type,
@@ -23,13 +34,20 @@ export default function TankViewer({
   reset,
   labels,
   autoRotate = false,
+  floorView = false,
+  onCloseFloor,
 }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const pins = useRef<Partial<Record<Section, HTMLButtonElement | null>>>({});
   const pick = useRef(onSelect);
   const selection = useRef(selected);
   const labelState = useRef(labels);
-  const api = useRef<{ focus: (s: Section) => void; reset: () => void } | null>(null);
+  const floorState = useRef(floorView);
+  const api = useRef<{
+    focus: (s: Section) => void;
+    reset: () => void;
+    floor: (open: boolean) => void;
+  } | null>(null);
   const [error, setError] = useState('');
   // Bumped to rebuild the scene after the browser drops the WebGL context
   // (a GPU driver reset, or the machine waking from sleep).
@@ -101,6 +119,44 @@ export default function TankViewer({
     scene.add(fill);
     const tank = buildTank(type, cutaway);
     scene.add(tank.root);
+    // Materials of everything above the floor, with their normal opacity, for fading.
+    const upperMats = new Map<THREE.Material, { opacity: number; transparent: boolean }>();
+    tank.upper.traverse((o) => {
+      const m = (o as THREE.Mesh).material;
+      if (!m) return;
+      for (const mat of Array.isArray(m) ? m : [m])
+        upperMats.set(mat, { opacity: mat.opacity, transparent: mat.transparent });
+    });
+    // 0 = whole tank … 1 = floor open. Always starts closed and animates to the target,
+    // so a rebuild (tank type or cutaway change) replays the reveal.
+    let reveal = 0;
+    let revealTarget = floorState.current ? 1 : 0;
+    let fading = false;
+    let shadows = true;
+    function applyReveal(t: number) {
+      const lift = smooth(0, 0.55, t);
+      const fade = 1 - smooth(0.04, 0.45, t);
+      tank.upper.position.y = lift * 9;
+      tank.upper.visible = fade > 0.005;
+      const nowFading = t > 0;
+      for (const [mat, base] of upperMats) {
+        if (nowFading !== fading) {
+          mat.transparent = nowFading || base.transparent;
+          mat.needsUpdate = true;
+        }
+        mat.opacity = base.opacity * (nowFading ? fade : 1);
+      }
+      fading = nowFading;
+      const wantShadows = t < 0.2;
+      if (wantShadows !== shadows) {
+        shadows = wantShadows;
+        tank.upper.traverse((o) => {
+          if ((o as THREE.Mesh).isMesh) o.castShadow = wantShadows;
+        });
+      }
+      tank.floorScan.setReveal(smooth(0.3, 1, t));
+    }
+    applyReveal(0);
     const plane = new THREE.Mesh(
       new THREE.PlaneGeometry(100, 100),
       new THREE.ShadowMaterial({ opacity: 0.28 }),
@@ -137,6 +193,8 @@ export default function TankViewer({
         (-(e.clientY - rect.top) / rect.height) * 2 + 1,
       );
       ray.setFromCamera(mouse, camera);
+      // While the floor is open the rest of the tank is gone, so there is nothing to pick.
+      if (floorState.current) return undefined;
       return ray.intersectObjects(tank.targets, false)?.[0]?.object?.userData?.section as
         | Section
         | undefined;
@@ -181,7 +239,26 @@ export default function TankViewer({
         tween = home.clone();
         targetTween = new THREE.Vector3(0, 3, 0);
       },
+      floor: (open: boolean) => {
+        revealTarget = open ? 1 : 0;
+        if (open) {
+          // Swing down over the floor, keeping the direction the user was looking from.
+          const flat = camera.position.clone().sub(controls.target).setY(0);
+          if (flat.lengthSq() < 1e-6) flat.set(0, 0, 1);
+          flat.normalize();
+          const el = 0.98,
+            dist = 14.5;
+          targetTween = new THREE.Vector3(0, 0.1, 0.4);
+          tween = targetTween
+            .clone()
+            .add(flat.multiplyScalar(Math.cos(el) * dist))
+            .add(new THREE.Vector3(0, Math.sin(el) * dist, 0));
+        } else if (!tween) {
+          api.current?.focus(selection.current);
+        }
+      },
     };
+    if (revealTarget) api.current.floor(true);
     const clock = new THREE.Clock();
     let frame = 0;
     let dead = false;
@@ -199,6 +276,15 @@ export default function TankViewer({
         if (controls.target.distanceTo(targetTween) < 0.01) targetTween = null;
       }
       controls.update(dt);
+      if (reveal !== revealTarget) {
+        const step = dt / REVEAL_TIME;
+        // Closing runs a little faster than opening.
+        reveal =
+          revealTarget > reveal
+            ? Math.min(revealTarget, reveal + step)
+            : Math.max(revealTarget, reveal - step * 1.6);
+        applyReveal(reveal);
+      }
       for (const o of tank.targets) {
         const material = o.material as THREE.MeshStandardMaterial;
         const s = o.userData?.section;
@@ -212,7 +298,11 @@ export default function TankViewer({
         if (!pin) continue;
         const p = tank.anchors[s.id].clone().project(camera);
         const hidden =
-          !labelState.current || (type === 'efr' && s.id === 'roof') || p.z > 1 || p.z < -1;
+          !labelState.current ||
+          reveal > 0.02 ||
+          (type === 'efr' && s.id === 'roof') ||
+          p.z > 1 ||
+          p.z < -1;
         pin.style.display = hidden ? 'none' : 'flex';
         pin.style.left = `${(p.x * 0.5 + 0.5) * 100}%`;
         pin.style.top = `${(-p.y * 0.5 + 0.5) * 100}%`;
@@ -243,6 +333,7 @@ export default function TankViewer({
         }
       });
       mats.forEach((m) => m.dispose());
+      tank.floorScan.dispose();
       env.dispose();
       renderer.dispose();
       // Release the GPU context now rather than waiting for garbage collection;
@@ -251,6 +342,11 @@ export default function TankViewer({
       renderer.domElement.remove();
     };
   }, [type, cutaway, autoRotate, generation]);
+  useEffect(() => {
+    if (floorState.current === floorView) return;
+    floorState.current = floorView;
+    api.current?.floor(floorView);
+  }, [floorView]);
   return (
     <>
       <div
@@ -273,6 +369,45 @@ export default function TankViewer({
             {s.name.toUpperCase()}
           </button>
         ))}
+      </div>
+      <div
+        className={`floor-legend ${floorView ? 'open' : ''}`}
+        aria-hidden={!floorView}
+        role="group"
+        aria-label="Floor scan legend"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <span className="eyebrow">MFL floor scan · C-scan</span>
+          {onCloseFloor && (
+            <button className="tool-button !px-2 !py-1 text-[10px]" onClick={onCloseFloor} tabIndex={floorView ? 0 : -1}>
+              Show full tank
+            </button>
+          )}
+        </div>
+        <div className="mt-3 h-2.5 rounded-sm" style={{ background: scanGradient }} />
+        <div className="mt-1 flex justify-between font-mono text-[9px] text-muted-foreground">
+          {[0, 20, 40, 60, SCALE_MAX].map((v) => (
+            <span key={v}>{v === SCALE_MAX ? `${v}%+` : `${v}%`}</span>
+          ))}
+        </div>
+        <div className="mt-1 text-[9px] text-muted-foreground">Wall loss, % of nominal plate thickness</div>
+        <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[10px]">
+          <span className="flex items-center gap-1.5">
+            <span className="floor-key-dot" /> Topside (product side)
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="floor-key-diamond" /> Underside (soil side)
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="floor-key-hatch" /> Not scanned
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="floor-key-patch" /> Repair patch
+          </span>
+        </div>
+        <div className="mt-3 border-t border-border pt-2 text-[9px] text-muted-foreground">
+          Pins mark calls of 40% and over. Illustrative data.
+        </div>
       </div>
       {error && (
         <div

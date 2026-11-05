@@ -176,6 +176,68 @@ input[type='radio'] {
   border-radius: 50%;
   background: currentColor;
 }
+.floor-legend {
+  position: absolute;
+  left: 20px;
+  bottom: 118px;
+  width: 300px;
+  max-width: calc(100% - 40px);
+  padding: 12px 14px;
+  background: hsl(var(--card) / 0.92);
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 30px hsl(var(--foreground) / 0.12);
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
+}
+.floor-legend.open {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+  transition-delay: 1.4s;
+}
+.floor-key-dot,
+.floor-key-diamond,
+.floor-key-hatch,
+.floor-key-patch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  flex: none;
+}
+.floor-key-dot {
+  border-radius: 50%;
+  background: hsl(var(--foreground) / 0.75);
+}
+.floor-key-diamond {
+  width: 8px;
+  height: 8px;
+  margin: 0 1px;
+  transform: rotate(45deg);
+  background: hsl(var(--foreground) / 0.75);
+}
+.floor-key-hatch {
+  background: repeating-linear-gradient(
+    45deg,
+    hsl(var(--muted-foreground) / 0.55) 0 2px,
+    hsl(var(--muted-foreground) / 0.3) 2px 4px
+  );
+}
+.floor-key-patch {
+  border: 1.5px solid hsl(var(--foreground) / 0.7);
+}
+@media (max-width: 600px) {
+  .floor-legend {
+    left: 12px;
+    bottom: 110px;
+    padding: 10px;
+  }
+}
 .detail-copy {
   font-size: 12px;
   line-height: 1.75;

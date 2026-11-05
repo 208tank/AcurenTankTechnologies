@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { Section, TankType } from '@/lib/tank-data';
+import { buildFloorScan } from './floor-scan';
 export const palette = {
   steel: 0x9aaab3,
   inner: 0x72828e,
@@ -13,6 +14,11 @@ export const palette = {
 };
 export function buildTank(type: TankType, cutaway: boolean) {
   const root = new THREE.Group();
+  // Everything above the floor (shell, roofs, stair, nozzles) goes in `upper`, so the
+  // viewer can lift it away and show the floor scan. Floor parts are added to `root`.
+  const upper = new THREE.Group();
+  root.add(upper);
+  let parent: THREE.Group = root;
   const targets: THREE.Mesh[] = [];
   const start = cutaway ? 1.62 : 0,
     span = cutaway ? Math.PI * 2 - 1.98 : Math.PI * 2;
@@ -55,12 +61,17 @@ export function buildTank(type: TankType, cutaway: boolean) {
       o.userData.section = section;
       targets.push(o);
     }
-    root.add(o);
+    parent.add(o);
     return o;
   }
+  // Floor seams get their own material so fading the shell's seams leaves them alone.
+  const floorSeam = seam.clone();
   function line(points: THREE.Vector3[]) {
-    const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), seam);
-    root.add(l);
+    const l = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(points),
+      parent === root ? floorSeam : seam,
+    );
+    parent.add(l);
     return l;
   }
   function arc(r: number, y: number, a = start, len = span) {
@@ -124,6 +135,9 @@ export function buildTank(type: TankType, cutaway: boolean) {
     const a = (i / 24) * Math.PI * 2;
     line([point(a, 4.42, 0.09), point(a, 5.1, 0.09)]);
   }
+  const floorScan = buildFloorScan();
+  root.add(floorScan.group);
+  parent = upper;
   // Individual plate courses preserve subtle differences in steel response.
   for (let c = 0; c < 6; c++) {
     const mat = steel.clone();
@@ -295,6 +309,8 @@ export function buildTank(type: TankType, cutaway: boolean) {
   }
   return {
     root,
+    upper,
+    floorScan,
     targets,
     anchors: {
       floor: new THREE.Vector3(2, 0.1, 3.8),
