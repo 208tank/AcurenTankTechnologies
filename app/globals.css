@@ -176,6 +176,58 @@ input[type='radio'] {
   border-radius: 50%;
   background: currentColor;
 }
+.floor-legend {
+  position: absolute;
+  left: 20px;
+  bottom: 118px;
+  width: 300px;
+  max-width: calc(100% - 40px);
+  padding: 12px 14px;
+  background: hsl(var(--card) / 0.92);
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 30px hsl(var(--foreground) / 0.12);
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
+}
+.floor-legend.open {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+  transition-delay: 1.4s;
+}
+.floor-key-swatch {
+  display: inline-block;
+  width: 16px;
+  height: 10px;
+  flex: none;
+  border: 1px solid hsl(var(--foreground) / 0.25);
+}
+.floor-key-weld {
+  display: inline-block;
+  width: 16px;
+  height: 2px;
+  flex: none;
+}
+/* Same greys as the scan image in floor-scan.ts. */
+.floor-key-track {
+  background: #e2e3e5;
+}
+.floor-key-blank {
+  background: #fafafa;
+}
+@media (max-width: 600px) {
+  .floor-legend {
+    left: 12px;
+    bottom: 110px;
+    padding: 10px;
+  }
+}
 .detail-copy {
   font-size: 12px;
   line-height: 1.75;
