@@ -79,10 +79,18 @@ export default function Explorer() {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState<string | null>('mfl');
   const [full, setFull] = useState(false);
+  // The 3D view (and its inspection panel) filling the screen. Uses the browser's full-screen
+  // mode where it has one for elements; otherwise (iPhone Safari) the view is pinned over the page.
+  const grid = useRef<HTMLDivElement>(null);
+  const [viewFull, setViewFull] = useState(false);
+  const [viewPinned, setViewPinned] = useState(false);
   const [panel, setPanel] = useState(true);
   const [notice, setNotice] = useState('');
   useEffect(() => {
-    const changed = () => setFull(!!document.fullscreenElement);
+    const changed = () => {
+      setFull(document.fullscreenElement === document.documentElement);
+      setViewFull(!!grid.current && document.fullscreenElement === grid.current);
+    };
     document.addEventListener('fullscreenchange', changed);
     return () => document.removeEventListener('fullscreenchange', changed);
   }, []);
@@ -113,6 +121,40 @@ export default function Explorer() {
     if (t === 'efr' && selected === 'roof') setSelected('floating');
     setOpen(null);
   }
+  async function toggleView() {
+    const el = grid.current;
+    if (!el) return;
+    if (viewPinned) {
+      setViewPinned(false);
+      return;
+    }
+    if (document.fullscreenElement === el) {
+      await document.exitFullscreen().catch(() => undefined);
+      return;
+    }
+    try {
+      if (typeof el.requestFullscreen !== 'function') throw new Error('no element full screen');
+      if (document.fullscreenElement) await document.exitFullscreen();
+      await el.requestFullscreen();
+    } catch {
+      setViewPinned(true);
+    }
+  }
+  // Pinned view: Esc closes it, and the page behind does not scroll.
+  useEffect(() => {
+    if (!viewPinned) return;
+    const key = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setViewPinned(false);
+    };
+    window.addEventListener('keydown', key);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', key);
+      document.body.style.overflow = overflow;
+    };
+  }, [viewPinned]);
+  const viewIsFull = viewFull || viewPinned;
   async function fullscreen() {
     try {
       if (document.fullscreenElement) {
@@ -168,7 +210,8 @@ export default function Explorer() {
           </p>
         )}
         <div
-          className="explorer-grid grid overflow-hidden rounded-xl border border-border"
+          ref={grid}
+          className={`explorer-grid grid overflow-hidden rounded-xl border border-border ${viewPinned ? 'is-full' : ''}`}
           style={!panel ? { gridTemplateColumns: '1fr' } : undefined}
         >
           <section
@@ -237,6 +280,15 @@ export default function Explorer() {
               </span>
             </div>
             <div className="absolute bottom-16 right-4 flex flex-col gap-2">
+              <button
+                title={viewIsFull ? 'Exit full screen' : 'Full screen 3D view'}
+                aria-label={viewIsFull ? 'Exit full screen' : 'Full screen 3D view'}
+                aria-pressed={viewIsFull}
+                className={`tool-button !p-2.5 ${viewIsFull ? 'text-primary' : ''}`}
+                onClick={toggleView}
+              >
+                {viewIsFull ? <Minimize size={16} /> : <Maximize size={16} />}
+              </button>
               <button
                 title="Reset camera"
                 aria-label="Reset camera"
