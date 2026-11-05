@@ -1,0 +1,1 @@
+(globalThis.TURBOPACK||(globalThis.TURBOPACK=[])).push(["object"==typeof document?document.currentScript:void 0,63059,t=>{"use strict";let e=(0,t.i(75254).f)("ChevronRight",[["path",{d:"m9 18 6-6-6-6",key:"mthhwq"}]]);t.s(["f",0,e],63059)}]);
