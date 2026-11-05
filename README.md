@@ -27,6 +27,8 @@ components/tank/         All TankScope screens and the 3D viewer
   tank-viewer.tsx        3D viewer: camera, lighting, section picking
   floor-scan.ts          Floor C-scan view: Floormap-style top and bottom discontinuity plot
   shell-scan.ts          Shell views: UT readings per station, AUT C-scan bands, 3D laser scan
+  edge-settlement.ts     Edge settlement (API 653 Annex B): Fig. B.11/B.12 tables, station profiles, floor overlay
+  edge-station-panel.tsx Station close-up: radial cross-section and Annex B chart
   explorer.tsx           3D Explorer screen
   presentation-*.tsx     Presentation builder and full-screen player
   booth-mode.tsx         Booth mode setup screen and TV loop

@@ -4,6 +4,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { buildTank, palette } from './build-tank';
+import { edgeStations, stationAnchor, stationView, statusColor, type EdgeStatus } from './edge-settlement';
+import EdgeStationPanel from './edge-station-panel';
 import { LOWER_THRESHOLD, WELD_DISCONTINUITY, scanBins } from './floor-scan';
 import {
   AUT_NODATA,
@@ -40,6 +42,11 @@ type Props = {
   onShellView?: (mode: ShellMode | null) => void;
 };
 const MODES: ShellMode[] = ['ut', 'aut', 'laser'];
+type FloorMode = 'scan' | 'edge';
+/** Seconds to cross-fade between the floor scan and edge settlement. */
+const EDGE_TIME = 0.7;
+/** Zooming the camera closer than this (in edge settlement) opens the nearest station. */
+const STATION_ZOOM = 11.2;
 /** Seconds for the roof and floor to move away when the shell opens. */
 const SHELL_OPEN_TIME = 2.4;
 /** Seconds to cross-fade between shell views. */
@@ -70,11 +77,20 @@ export default function TankViewer({
   const labelState = useRef(labels);
   const floorState = useRef(floorView);
   const shellState = useRef(shellView);
+  // Floor view tabs (MFL scan or edge settlement) and the open settlement station.
+  const [floorMode, setFloorMode] = useState<FloorMode>('scan');
+  const [station, setStation] = useState<number | null>(null);
+  const floorModeState = useRef(floorMode);
+  const stationState = useRef(station);
+  const openStation = useRef(setStation);
+  const edgePins = useRef<Record<number, HTMLButtonElement | null>>({});
   const api = useRef<{
     focus: (s: Section) => void;
     reset: () => void;
     floor: (open: boolean) => void;
     shell: (mode: ShellMode | null) => void;
+    edge: (on: boolean) => void;
+    station: (no: number | null) => void;
   } | null>(null);
   const [error, setError] = useState('');
   // Bumped to rebuild the scene after the browser drops the WebGL context
@@ -198,6 +214,9 @@ export default function TankViewer({
     let shellOpenTarget = 0;
     const level: Record<ShellMode, number> = { ut: 0, aut: 0, laser: 0 };
     const levelTarget: Record<ShellMode, number> = { ut: 0, aut: 0, laser: 0 };
+    // Floor view: 0 = MFL scan … 1 = edge settlement.
+    let edgeLevel = floorModeState.current === 'edge' ? 1 : 0;
+    let edgeTarget = edgeLevel;
     function applyFades() {
       const lift = smooth(0, 0.55, reveal);
       const floorFade = 1 - smooth(0.04, 0.45, reveal);
@@ -211,7 +230,9 @@ export default function TankViewer({
       setFade(fittings, floorFade * (1 - gone));
       setFade(floorParts, 1 - gone);
       setFade(parts, floorFade * (1 - smooth(0.1, 0.9, level.laser) * show));
-      tank.floorScan.setReveal(smooth(0.3, 1, reveal));
+      const floorIn = smooth(0.3, 1, reveal);
+      tank.floorScan.setReveal(floorIn * (1 - edgeLevel));
+      tank.edgeOverlay.setLevel(smooth(0.45, 1, reveal) * edgeLevel);
       tank.shellScan.setLevels({
         ut: smooth(0.2, 1, level.ut) * show,
         aut: smooth(0.2, 1, level.aut) * show,
@@ -294,6 +315,19 @@ export default function TankViewer({
     renderer.domElement.addEventListener('pointerdown', pointerdown);
     renderer.domElement.addEventListener('pointerup', pointerup);
     renderer.domElement.addEventListener('pointerleave', leave);
+    // Swing down over the floor, keeping the direction the user was looking from.
+    function floorCamera() {
+      const flat = camera.position.clone().sub(controls.target).setY(0);
+      if (flat.lengthSq() < 1e-6) flat.set(0, 0, 1);
+      flat.normalize();
+      const el = 0.98,
+        dist = 14.5;
+      targetTween = new THREE.Vector3(0, 0.1, 0.4);
+      tween = targetTween
+        .clone()
+        .add(flat.multiplyScalar(Math.cos(el) * dist))
+        .add(new THREE.Vector3(0, Math.sin(el) * dist, 0));
+    }
     api.current = {
       focus: (s: Section) => {
         const h = s === 'floor' ? 2 : s === 'roof' ? 4.6 : 3.5;
@@ -307,21 +341,19 @@ export default function TankViewer({
       },
       floor: (open: boolean) => {
         revealTarget = open ? 1 : 0;
-        if (open) {
-          // Swing down over the floor, keeping the direction the user was looking from.
-          const flat = camera.position.clone().sub(controls.target).setY(0);
-          if (flat.lengthSq() < 1e-6) flat.set(0, 0, 1);
-          flat.normalize();
-          const el = 0.98,
-            dist = 14.5;
-          targetTween = new THREE.Vector3(0, 0.1, 0.4);
-          tween = targetTween
-            .clone()
-            .add(flat.multiplyScalar(Math.cos(el) * dist))
-            .add(new THREE.Vector3(0, Math.sin(el) * dist, 0));
-        } else if (!tween) {
-          api.current?.focus(selection.current);
-        }
+        if (open) floorCamera();
+        else if (!tween) api.current?.focus(selection.current);
+      },
+      edge: (on: boolean) => {
+        edgeTarget = on ? 1 : 0;
+      },
+      station: (no: number | null) => {
+        const st = edgeStations.find((s) => s.no === no);
+        if (st) {
+          const v = stationView(st);
+          tween = v.position;
+          targetTween = v.target;
+        } else if (floorState.current) floorCamera();
       },
       shell: (mode: ShellMode | null) => {
         const wasOpen = shellOpenTarget > 0;
@@ -369,6 +401,11 @@ export default function TankViewer({
             : Math.max(revealTarget, reveal - step * 1.6);
         changed = true;
       }
+      if (edgeLevel !== edgeTarget) {
+        const step = dt / EDGE_TIME;
+        edgeLevel = edgeTarget > edgeLevel ? Math.min(1, edgeLevel + step) : Math.max(0, edgeLevel - step);
+        changed = true;
+      }
       if (shellOpen !== shellOpenTarget) {
         const step = dt / SHELL_OPEN_TIME;
         shellOpen =
@@ -410,6 +447,38 @@ export default function TankViewer({
         pin.style.left = `${(p.x * 0.5 + 0.5) * 100}%`;
         pin.style.top = `${(-p.y * 0.5 + 0.5) * 100}%`;
       }
+      // Edge settlement station tags, once the floor is open in edge settlement.
+      const showEdge = reveal > 0.9 && edgeLevel > 0.6;
+      for (const st of edgeStations) {
+        const pin = edgePins.current[st.no];
+        if (!pin) continue;
+        const p = stationAnchor(st).project(camera);
+        const hidden = !showEdge || p.z > 1 || p.z < -1;
+        pin.style.display = hidden ? 'none' : 'flex';
+        pin.style.left = `${(p.x * 0.5 + 0.5) * 100}%`;
+        pin.style.top = `${(-p.y * 0.5 + 0.5) * 100}%`;
+      }
+      // Zooming in over the edge opens the station nearest the camera.
+      if (
+        showEdge &&
+        edgeTarget === 1 &&
+        stationState.current === null &&
+        !tween &&
+        camera.position.distanceTo(controls.target) < STATION_ZOOM
+      ) {
+        const look = Math.atan2(camera.position.x, camera.position.z);
+        let best = edgeStations[0],
+          bestD = Infinity;
+        for (const st of edgeStations) {
+          const d = Math.abs(Math.atan2(Math.sin(look - (st.deg * Math.PI) / 180), Math.cos(look - (st.deg * Math.PI) / 180)));
+          if (d < bestD) {
+            best = st;
+            bestD = d;
+          }
+        }
+        stationState.current = best.no;
+        openStation.current(best.no);
+      }
       renderer.render(scene, camera);
     }
     animate();
@@ -438,6 +507,7 @@ export default function TankViewer({
       mats.forEach((m) => m.dispose());
       tank.floorScan.dispose();
       tank.shellScan.dispose();
+      tank.edgeOverlay.dispose();
       env.dispose();
       renderer.dispose();
       // Release the GPU context now rather than waiting for garbage collection;
@@ -451,6 +521,25 @@ export default function TankViewer({
     floorState.current = floorView;
     api.current?.floor(floorView);
   }, [floorView]);
+  // Leaving the floor view closes any open station.
+  useEffect(() => {
+    if (!floorView) setStation(null);
+  }, [floorView]);
+  useEffect(() => {
+    if (floorModeState.current === floorMode) return;
+    floorModeState.current = floorMode;
+    api.current?.edge(floorMode === 'edge');
+    if (floorMode !== 'edge') setStation(null);
+  }, [floorMode]);
+  useEffect(() => {
+    if (stationState.current === station) {
+      // Opened by zooming in: the camera still needs to frame the station.
+      if (station !== null) api.current?.station(station);
+      return;
+    }
+    stationState.current = station;
+    api.current?.station(station);
+  }, [station]);
   useEffect(() => {
     if (shellState.current === shellView) return;
     shellState.current = shellView;
@@ -492,10 +581,12 @@ export default function TankViewer({
         className={`floor-legend ${floorView ? 'open' : ''}`}
         aria-hidden={!floorView}
         role="group"
-        aria-label="Floor scan legend"
+        aria-label="Floor legend"
       >
         <div className="flex items-center justify-between gap-3">
-          <span className="eyebrow">Top &amp; bottom discontinuities</span>
+          <span className="eyebrow">
+            {floorMode === 'scan' ? 'Top & bottom discontinuities' : 'Edge settlement · Annex B'}
+          </span>
           {onCloseFloor && (
             <button
               className="tool-button !px-2 !py-1 text-[10px]"
@@ -506,29 +597,73 @@ export default function TankViewer({
             </button>
           )}
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-[10px]">
-          {scanBins.map((b) => (
-            <span key={b.from} className="flex items-center gap-2">
-              <span className="floor-key-swatch" style={{ background: b.color }} />
-              {b.to === 100 ? `${b.from}% – 100%` : `${b.from}% – ${b.to}%`}
-            </span>
-          ))}
-          <span className="flex items-center gap-2">
-            <span className="floor-key-weld" style={{ background: WELD_DISCONTINUITY }} />
-            Weld disc.
-          </span>
+        <div className="shell-modes mt-3" role="group" aria-label="Floor view">
+          <button
+            aria-pressed={floorMode === 'scan'}
+            tabIndex={floorView ? 0 : -1}
+            onClick={() => setFloorMode('scan')}
+          >
+            Floor scan
+          </button>
+          <button
+            aria-pressed={floorMode === 'edge'}
+            tabIndex={floorView ? 0 : -1}
+            onClick={() => setFloorMode('edge')}
+          >
+            Edge settlement
+          </button>
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-[10px]">
-          <span className="flex items-center gap-2">
-            <span className="floor-key-swatch floor-key-track" /> Scanned
-          </span>
-          <span className="flex items-center gap-2">
-            <span className="floor-key-swatch floor-key-blank" /> Not scanned
-          </span>
-        </div>
-        <div className="mt-3 border-t border-border pt-2 text-[9px] text-muted-foreground">
-          Wall loss, % of nominal. Lower threshold {LOWER_THRESHOLD}%. Illustrative data.
-        </div>
+        {floorMode === 'scan' ? (
+          <>
+            <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-[10px]">
+              {scanBins.map((b) => (
+                <span key={b.from} className="flex items-center gap-2">
+                  <span className="floor-key-swatch" style={{ background: b.color }} />
+                  {b.to === 100 ? `${b.from}% – 100%` : `${b.from}% – ${b.to}%`}
+                </span>
+              ))}
+              <span className="flex items-center gap-2">
+                <span className="floor-key-weld" style={{ background: WELD_DISCONTINUITY }} />
+                Weld disc.
+              </span>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-[10px]">
+              <span className="flex items-center gap-2">
+                <span className="floor-key-swatch floor-key-track" /> Scanned
+              </span>
+              <span className="flex items-center gap-2">
+                <span className="floor-key-swatch floor-key-blank" /> Not scanned
+              </span>
+            </div>
+            <div className="mt-3 border-t border-border pt-2 text-[9px] text-muted-foreground">
+              Wall loss, % of nominal. Lower threshold {LOWER_THRESHOLD}%. Illustrative data.
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="mt-3 grid gap-1.5 text-[10px]">
+              {(['Acceptable', 'NDE required', 'Exceeds', 'No edge settlement'] as EdgeStatus[]).map((k) => (
+                <span key={k} className="flex items-center gap-2">
+                  <span className="floor-key-swatch" style={{ background: statusColor[k] }} />
+                  {k === 'Acceptable'
+                    ? 'Acceptable (under 75% of allowable)'
+                    : k === 'NDE required'
+                      ? 'NDE required (75–100%)'
+                      : k === 'Exceeds'
+                        ? 'Exceeds allowable'
+                        : 'No edge settlement (6 ft edge zone)'}
+                  <span className="ml-auto font-mono text-muted-foreground">
+                    {edgeStations.filter((st) => st.status === k).length}
+                  </span>
+                </span>
+              ))}
+            </div>
+            <div className="mt-3 border-t border-border pt-2 text-[9px] text-muted-foreground">
+              Coloured band is the settled width R; colour is B as a % of the Fig. B.11 / B.12
+              allowable. Zoom in or tap a station to see its cross-section. Illustrative data.
+            </div>
+          </>
+        )}
       </div>
       <div
         className={`floor-legend shell-panel ${shellOpen ? 'open' : ''}`}
@@ -616,6 +751,26 @@ export default function TankViewer({
           Illustrative data.
         </div>
       </div>
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        {edgeStations.map((st) => (
+          <button
+            key={st.no}
+            ref={(node) => {
+              edgePins.current[st.no] = node;
+            }}
+            onClick={() => setStation(st.no)}
+            className={`edge-pin pointer-events-auto ${station === st.no ? 'active' : ''}`}
+            style={{ display: 'none', borderColor: statusColor[st.status] }}
+            aria-label={`Station ${st.no}, ${st.status}`}
+          >
+            <span className="dot" style={{ background: statusColor[st.status] }} />S{st.no}
+            {st.pct !== null && <b>{Math.round(st.pct)}%</b>}
+          </button>
+        ))}
+      </div>
+      {floorView && floorMode === 'edge' && station !== null && (
+        <EdgeStationPanel station={station} onClose={() => setStation(null)} onPick={setStation} />
+      )}
       {error && (
         <div
           role="alert"

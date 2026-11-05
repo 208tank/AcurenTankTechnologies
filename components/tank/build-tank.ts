@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { Section, TankType } from '@/lib/tank-data';
 import { buildFloorScan } from './floor-scan';
 import { buildShellScan } from './shell-scan';
+import { buildEdgeOverlay } from './edge-settlement';
 export const palette = {
   steel: 0x9aaab3,
   inner: 0x72828e,
@@ -150,6 +151,8 @@ export function buildTank(type: TankType, cutaway: boolean) {
   }
   const floorScan = buildFloorScan();
   root.add(floorScan.group);
+  const edgeOverlay = buildEdgeOverlay();
+  root.add(edgeOverlay.group);
   const shellScan = buildShellScan(start, span);
   root.add(shellScan.group);
   parent = shellParts;
@@ -334,6 +337,7 @@ export function buildTank(type: TankType, cutaway: boolean) {
     roofParts,
     fittings,
     floorScan,
+    edgeOverlay,
     shellScan,
     targets,
     anchors: {
