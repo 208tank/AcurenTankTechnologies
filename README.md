@@ -26,6 +26,7 @@ components/tank/         All TankScope screens and the 3D viewer
   build-tank.ts          Builds the tank model in three.js (no model files needed)
   tank-viewer.tsx        3D viewer: camera, lighting, section picking
   floor-scan.ts          Floor C-scan view: Floormap-style top and bottom discontinuity plot
+  shell-scan.ts          Shell views: UT readings per station, AUT C-scan bands, 3D laser scan
   explorer.tsx           3D Explorer screen
   presentation-*.tsx     Presentation builder and full-screen player
   booth-mode.tsx         Booth mode setup screen and TV loop

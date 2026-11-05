@@ -221,6 +221,37 @@ input[type='radio'] {
 .floor-key-blank {
   background: #fafafa;
 }
+.floor-legend.shell-panel.open {
+  transition-delay: 0.35s;
+}
+.shell-modes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  background: hsl(var(--secondary));
+}
+.shell-modes button {
+  padding: 6px 4px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: hsl(var(--muted-foreground));
+}
+.shell-modes button:hover {
+  color: hsl(var(--foreground));
+}
+.shell-modes button[aria-pressed='true'] {
+  background: hsl(var(--card));
+  color: hsl(var(--primary));
+  box-shadow: 0 1px 3px hsl(var(--foreground) / 0.12);
+}
+.shell-modes button:focus-visible {
+  outline: 2px solid hsl(var(--ring, var(--primary)));
+  outline-offset: 1px;
+}
 @media (max-width: 600px) {
   .floor-legend {
     left: 12px;

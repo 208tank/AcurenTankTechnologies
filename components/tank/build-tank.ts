@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { Section, TankType } from '@/lib/tank-data';
 import { buildFloorScan } from './floor-scan';
+import { buildShellScan } from './shell-scan';
 export const palette = {
   steel: 0x9aaab3,
   inner: 0x72828e,
@@ -16,9 +17,18 @@ export function buildTank(type: TankType, cutaway: boolean) {
   const root = new THREE.Group();
   // Everything above the floor (shell, roofs, stair, nozzles) goes in `upper`, so the
   // viewer can lift it away and show the floor scan. Floor parts are added to `root`.
+  // Floor parts (foundation, plates, annular ring) sit in `floorParts`. Everything above the
+  // floor goes in `upper`, which the floor view lifts away. Inside `upper`, the shell plates,
+  // the roofs (fixed, floating, seal) and the fittings (stair, rails, nozzles) each have a
+  // group, so the shell views can move the roof and floor away and keep the shell.
+  const floorParts = new THREE.Group();
   const upper = new THREE.Group();
-  root.add(upper);
-  let parent: THREE.Group = root;
+  const shellParts = new THREE.Group();
+  const roofParts = new THREE.Group();
+  const fittings = new THREE.Group();
+  root.add(floorParts, upper);
+  upper.add(shellParts, roofParts, fittings);
+  let parent: THREE.Group = floorParts;
   const targets: THREE.Mesh[] = [];
   const start = cutaway ? 1.62 : 0,
     span = cutaway ? Math.PI * 2 - 1.98 : Math.PI * 2;
@@ -65,12 +75,15 @@ export function buildTank(type: TankType, cutaway: boolean) {
     return o;
   }
   // Floor seams get their own material so fading the shell's seams leaves them alone.
-  const floorSeam = seam.clone();
+  // Each group gets its own seam material so fading one group leaves the others alone.
+  const seams = new Map<THREE.Group, THREE.LineBasicMaterial>([
+    [floorParts, seam.clone()],
+    [shellParts, seam.clone()],
+    [roofParts, seam.clone()],
+    [fittings, seam],
+  ]);
   function line(points: THREE.Vector3[]) {
-    const l = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints(points),
-      parent === root ? floorSeam : seam,
-    );
+    const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), seams.get(parent) ?? seam);
     parent.add(l);
     return l;
   }
@@ -137,7 +150,9 @@ export function buildTank(type: TankType, cutaway: boolean) {
   }
   const floorScan = buildFloorScan();
   root.add(floorScan.group);
-  parent = upper;
+  const shellScan = buildShellScan(start, span);
+  root.add(shellScan.group);
+  parent = shellParts;
   // Individual plate courses preserve subtle differences in steel response.
   for (let c = 0; c < 6; c++) {
     const mat = steel.clone();
@@ -178,6 +193,7 @@ export function buildTank(type: TankType, cutaway: boolean) {
       }
     }
   }
+  parent = roofParts;
   const fy = type === 'efr' ? 4.55 : 3.75;
   const fmat = deck.clone();
   fmat.color.setHex(0x84959d);
@@ -244,6 +260,7 @@ export function buildTank(type: TankType, cutaway: boolean) {
       rod(point(a, 2.8, 0.1), point(a, 2.8, 6.66), 0.055, steel, 'roof');
     }
   }
+  parent = fittings;
   // Helical external stair: treads, stringers, landings and paired safety rails.
   const steps = 48,
     a0 = 3.55,
@@ -273,6 +290,7 @@ export function buildTank(type: TankType, cutaway: boolean) {
     rod(point(a, 5.04, 6.12), point(a, 5.04, 6.67), 0.018, rail, 'shell');
     if (i > 0) rod(point(a - span / 40, 5.04, 6.67), point(a, 5.04, 6.67), 0.022, rail, 'shell');
   }
+  parent = roofParts;
   if (type === 'efr') {
     const a = new THREE.Vector3(-3.4, 6.18, -3.55),
       b = new THREE.Vector3(-0.5, fy + 0.14, -0.55);
@@ -296,6 +314,7 @@ export function buildTank(type: TankType, cutaway: boolean) {
     }
     mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.06, 20), dark, 'floating', [0, fy + 0.09, 0]);
   }
+  parent = fittings;
   // Shell nozzles, reinforcement pads and a manway on the intact side.
   for (const [a, y, r] of [
     [2.0, 0.7, 0.2],
@@ -310,7 +329,12 @@ export function buildTank(type: TankType, cutaway: boolean) {
   return {
     root,
     upper,
+    floorParts,
+    shellParts,
+    roofParts,
+    fittings,
     floorScan,
+    shellScan,
     targets,
     anchors: {
       floor: new THREE.Vector3(2, 0.1, 3.8),
