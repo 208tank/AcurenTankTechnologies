@@ -89,11 +89,18 @@ function Profile({ st }: { st: Station }) {
       {settled && (
         <>
           <line x1={X(st.R!)} x2={X(st.R!)} y1={mt} y2={H - mb} stroke={color} strokeDasharray="3 3" />
-          <text x={X(st.R!) + 4} y={mt + 9} fontSize="9" fill={color} fontWeight={700}>
+          <text x={X(st.R!) + 4} y={mt + 9} fontSize="9" fill={color} fontWeight={700} className="edge-halo">
             R {ft(st.R!)} ft
           </text>
           <line x1={X(st.xB) + 7} x2={X(st.xB) + 7} y1={Z(plane(st.xB))} y2={Z(plane(st.xB) - st.B)} stroke={color} strokeWidth={1.6} markerEnd="url(#edge-arrow)" markerStart="url(#edge-arrow)" />
-          <text x={X(st.xB) + 12} y={(Z(plane(st.xB)) + Z(plane(st.xB) - st.B)) / 2 + 3} fontSize="10" fill={color} fontWeight={700}>
+          <text
+            x={X(st.xB) + 12}
+            y={Z(plane(st.xB)) + 14}
+            fontSize="10"
+            fill={color}
+            fontWeight={700}
+            className="edge-halo"
+          >
             B {f2(st.B)} in
           </text>
         </>
@@ -165,7 +172,7 @@ function AnnexB({ st }: { st: Station }) {
         const g = governing(p);
         return g === null ? null : g * 0.75;
       })} className="edge-curve nde" />
-      <g fontSize="9" fontWeight={600}>
+      <g fontSize="9" fontWeight={600} className="edge-halo">
         <text x={X(5.95)} y={Y(edgeAllow(TANK_D_FT, 5.95).Be!) - 5} textAnchor="end" className="edge-lab be">
           Be (Fig. B.12)
         </text>
@@ -175,11 +182,16 @@ function AnnexB({ st }: { st: Station }) {
         <text x={X(5.95)} y={Y(governing(pts[pts.length - 2])! * 0.75) + 12} textAnchor="end" className="edge-lab nde">
           75% (NDE)
         </text>
+        {angled && (
+          <text x={X(3.6)} y={Y(governing(pts[72])!) - 6} textAnchor="end" className="edge-lab gov">
+            Allowable at α {st.weld.kind === 'angle' ? st.weld.alpha : ''}°
+          </text>
+        )}
       </g>
       {st.R !== null && (
         <g>
           <circle cx={X(st.R / 12)} cy={Y(st.B)} r={6} fill={color} stroke="hsl(var(--card))" strokeWidth={2} />
-          <text x={X(st.R / 12) + 9} y={Y(st.B) - 7} fontSize="10" fontWeight={700} fill={color}>
+          <text x={X(st.R / 12) + 9} y={Y(st.B) + 14} fontSize="10" fontWeight={700} fill={color} className="edge-halo">
             S{st.no}
           </text>
         </g>

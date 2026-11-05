@@ -386,6 +386,16 @@ input[type='radio'] {
 .edge-lab {
   stroke: none;
 }
+.edge-lab.gov {
+  fill: #7c3aed;
+}
+.edge-halo,
+.edge-halo text {
+  paint-order: stroke;
+  stroke: hsl(var(--card));
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
 .edge-facts {
   display: grid;
   grid-template-columns: auto 1fr;
