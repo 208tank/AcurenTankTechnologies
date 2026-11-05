@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 
 /**
- * Floor "C-scan" shown when the floor section is opened: every bottom and annular
- * plate is painted the way an MFL floor scanner's C-scan plot looks (scan lanes
- * along the plate, a blue baseline, colour-graded indications, unscanned weld and
- * critical-zone strips), and the deeper indications get 3D pins.
+ * Floor scan shown when the floor section is opened. Every bottom and annular plate
+ * is painted like an Eddyfi / Silverwing Floormap "Tank Floor Layout Showing Top and
+ * Bottom Discontinuities" plot: light-grey scan tracks along each plate with ragged
+ * ends and white unscanned gaps, black plate outlines, and discontinuities drawn as
+ * pixel speckle in banded colours (yellow 20–29 % up to red 80 %+). The deeper calls
+ * also get 3D pins.
  *
  * The data is illustrative only. It is generated from a fixed seed so the same
  * floor appears every time.
@@ -20,24 +22,31 @@ export const FLOOR = {
   rowH: 1.2,
   /** Annular plates around the ring. */
   annN: 24,
-  /** Height of the C-scan image above the plate surface (just over the seam lines). */
+  /** Height of the scan image above the plate surface (just over the seam lines). */
   y: 0.0915,
 };
 
-/** Wall-loss colour scale, low to high. Also used for the on-screen legend. */
-export const scanScale: [number, string][] = [
-  [0, '#0b1f5c'],
-  [0.12, '#123c94'],
-  [0.26, '#1592d2'],
-  [0.4, '#22c08a'],
-  [0.56, '#e9e330'],
-  [0.74, '#f39a1d'],
-  [1, '#d7191c'],
+/** Discontinuity colour scheme (wall loss bands), as on the Floormap plot. */
+export const scanBins: { from: number; to: number; color: string }[] = [
+  { from: 20, to: 29, color: '#ffff00' },
+  { from: 30, to: 39, color: '#ffa500' },
+  { from: 40, to: 49, color: '#00e600' },
+  { from: 50, to: 59, color: '#00ffff' },
+  { from: 60, to: 69, color: '#1e90ff' },
+  { from: 70, to: 79, color: '#ff00ff' },
+  { from: 80, to: 100, color: '#ff0000' },
 ];
-/** Wall loss (%) at the top of the scale. */
-export const SCALE_MAX = 80;
-const UNSCANNED = [138, 149, 158];
-const SEAM = 'rgba(6, 12, 24, 0.85)';
+/** Lowest wall loss shown (the scanner's lower threshold). */
+export const LOWER_THRESHOLD = 20;
+export const WELD_DISCONTINUITY = '#e00000';
+/** Wall loss (%) at which a call gets a 3D pin. */
+export const PIN_MIN = 50;
+
+const WHITE = [250, 250, 250];
+const TRACK = [226, 227, 229];
+const TRACK_EDGE = [204, 206, 209];
+const OUTLINE = '#141414';
+const MARKER = '#d8b46a';
 
 export type ScanIndication = {
   no: number;
@@ -47,9 +56,7 @@ export type ScanIndication = {
   rz: number;
   /** Wall loss, % of nominal thickness. */
   loss: number;
-  side: 'top' | 'under';
 };
-export type ScanPatch = { x: number; z: number; w: number; d: number };
 
 /* ----------------------------------------------------------------------- plate layout --- */
 
@@ -70,7 +77,7 @@ function bandOf(z: number) {
   return Math.min(6, Math.floor((z - ROW_STARTS[0]) / FLOOR.rowH));
 }
 
-/* ------------------------------------------------------------------------ demo data --- */
+/* --------------------------------------------------------------------------- random --- */
 
 function rng(seed: number) {
   return () => {
@@ -81,46 +88,70 @@ function rng(seed: number) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
+/** Repeatable 0–1 value for integer coordinates. */
+function hash(a: number, b: number, seed: number) {
+  let n = (Math.imul(a, 374761393) + Math.imul(b, 668265263) + Math.imul(seed, 1442695041)) | 0;
+  n = Math.imul(n ^ (n >>> 13), 1274126177);
+  return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
+}
+/** Smooth value noise, 0–1. */
+function noise(seed: number) {
+  return (x: number, y: number) => {
+    const xi = Math.floor(x),
+      yi = Math.floor(y),
+      xf = x - xi,
+      yf = y - yi,
+      u = xf * xf * (3 - 2 * xf),
+      v = yf * yf * (3 - 2 * yf);
+    const a = hash(xi, yi, seed),
+      b = hash(xi + 1, yi, seed),
+      c = hash(xi, yi + 1, seed),
+      d = hash(xi + 1, yi + 1, seed);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  };
+}
+const smooth = (a: number, b: number, t: number) => {
+  const k = Math.min(1, Math.max(0, (t - a) / (b - a)));
+  return k * k * (3 - 2 * k);
+};
 
-export const scanPatches: ScanPatch[] = [
-  { x: 0.55, z: 0.95, w: 0.55, d: 0.5 },
-  { x: -2.75, z: -0.85, w: 0.45, d: 0.62 },
+/* ------------------------------------------------------------------------ demo data --- */
+
+/** Corrosion areas: heavier around the outer plates, as is typical of a soil-side scan. */
+const AREAS = [
+  { x: -3.3, z: -0.5, r: 0.9, k: 0.75 },
+  { x: 3.6, z: 0.4, r: 0.8, k: 0.8 },
+  { x: 3.4, z: -1.6, r: 0.7, k: 0.65 },
+  { x: -0.4, z: -3.8, r: 1.1, k: 0.7 },
+  { x: 0.3, z: 3.8, r: 1.0, k: 0.75 },
+  { x: 3.3, z: 2.4, r: 0.6, k: 0.7 },
+  { x: -3.5, z: 1.9, r: 0.6, k: 0.5 },
+  { x: -2.6, z: -2.9, r: 0.6, k: 0.6 },
 ];
-const underPatch = (x: number, z: number) =>
-  scanPatches.some((p) => Math.abs(x - p.x) < p.w / 2 + 0.08 && Math.abs(z - p.z) < p.d / 2 + 0.08);
 
 function makeIndications(): ScanIndication[] {
   const r = rng(653);
   const out: Omit<ScanIndication, 'no'>[] = [];
-  const add = (x: number, z: number, rx: number, rz: number, loss: number, side: 'top' | 'under') => {
-    if (Math.hypot(x, z) < FLOOR.shell - 0.2 && !underPatch(x, z))
-      out.push({ x, z, rx, rz, loss: Math.round(loss), side });
+  const add = (x: number, z: number, rx: number, rz: number, loss: number) => {
+    if (Math.hypot(x, z) < FLOOR.shell - 0.2) out.push({ x, z, rx, rz, loss: Math.round(loss) });
   };
-  // Soil-side general corrosion with deeper spots inside it.
-  for (let i = 0; i < 9; i++) {
-    const a = r() * Math.PI * 2,
-      d = r() * 0.42;
-    add(-1.6 + Math.cos(a) * d, 2.1 + Math.sin(a) * d, 0.05 + r() * 0.05, 0.05 + r() * 0.05, 30 + r() * 38, 'under');
+  // Deeper spots inside the corrosion areas.
+  for (const a of AREAS) {
+    const n = Math.round(2 + a.k * 4);
+    for (let i = 0; i < n; i++) {
+      const t = r() * Math.PI * 2,
+        d = Math.sqrt(r()) * a.r * 0.7;
+      add(a.x + Math.cos(t) * d, a.z + Math.sin(t) * d, 0.03 + r() * 0.05, 0.03 + r() * 0.05, 35 + r() * 40 * a.k);
+    }
   }
-  // Product-side pitting cluster.
-  for (let i = 0; i < 8; i++) {
-    add(1.9 + (r() - 0.5) * 0.7, -1.3 + (r() - 0.5) * 0.5, 0.03 + r() * 0.025, 0.03 + r() * 0.025, 25 + r() * 40, 'top');
+  // A few deep isolated calls.
+  add(-0.7, -2.4, 0.06, 0.05, 82);
+  add(3.95, 0.9, 0.05, 0.05, 74);
+  add(-3.75, -0.2, 0.05, 0.04, 66);
+  // Annular plate calls just inside the shell.
+  for (const a of [3.4, 3.48, 0.9]) {
+    add(Math.sin(a) * (4.6 + r() * 0.15), Math.cos(a) * (4.6 + r() * 0.15), 0.05, 0.05, 45 + r() * 20);
   }
-  // Soil-side line along a scan lane.
-  add(2.55, 2.85, 0.42, 0.055, 52, 'under');
-  // Annular plate corrosion just inside the shell (critical zone).
-  for (const a of [3.4, 3.48, 3.57]) {
-    add(Math.sin(a) * (4.62 + r() * 0.1), Math.cos(a) * (4.62 + r() * 0.1), 0.07, 0.06, 55 + r() * 25, 'under');
-  }
-  // The deepest call on the floor.
-  add(-0.7, -2.4, 0.09, 0.08, 78, 'under');
-  // Isolated calls scattered over the floor.
-  for (let i = 0; i < 26; i++) {
-    const a = r() * Math.PI * 2,
-      d = Math.sqrt(r()) * 4.7;
-    add(Math.sin(a) * d, Math.cos(a) * d, 0.03 + r() * 0.04, 0.03 + r() * 0.04, 20 + r() * 26, r() < 0.55 ? 'under' : 'top');
-  }
-  // Number them across the floor, row by row, the way a scan report lists them.
   return out
     .sort((a, b) => Math.round(a.z / 0.6) - Math.round(b.z / 0.6) || a.x - b.x)
     .map((d, i) => ({ ...d, no: i + 1 }));
@@ -129,160 +160,202 @@ export const scanIndications = makeIndications();
 
 /* ---------------------------------------------------------------------- colour helpers --- */
 
-// Parsed straight from the hex (sRGB, 0–255) so the canvas gets the exact scale colours.
-const stops = scanScale.map(([t, hex]) => {
-  const v = parseInt(hex.slice(1), 16);
-  return [t, (v >> 16) & 255, (v >> 8) & 255, v & 255] as const;
+const binRGB = scanBins.map((b) => {
+  const v = parseInt(b.color.slice(1), 16);
+  return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
 });
-/** Colour for a 0–1 value on the scale, as 0–255 RGB. */
-export function scanRGB(v: number): [number, number, number] {
-  const t = Math.min(1, Math.max(0, v));
-  for (let i = 1; i < stops.length; i++) {
-    if (t <= stops[i][0]) {
-      const a = stops[i - 1],
-        b = stops[i],
-        k = (t - a[0]) / (b[0] - a[0]);
-      return [a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k, a[3] + (b[3] - a[3]) * k];
-    }
-  }
-  const l = stops[stops.length - 1];
-  return [l[1], l[2], l[3]];
+function binIndex(loss: number) {
+  for (let i = scanBins.length - 1; i >= 0; i--) if (loss >= scanBins[i].from) return i;
+  return -1;
 }
-/** Colour for a wall-loss percentage. */
+/** Colour of the band a wall loss falls in. */
 export function lossColor(loss: number) {
-  const [r, g, b] = scanRGB(loss / SCALE_MAX);
+  const [r, g, b] = binRGB[Math.max(0, binIndex(loss))];
   return new THREE.Color().setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace);
-}
-/** CSS gradient of the scale, for the legend. */
-export const scanGradient = `linear-gradient(90deg, ${scanScale.map(([t, c]) => `${c} ${t * 100}%`).join(', ')})`;
-
-/** Smooth value noise, 0–1. */
-function noise(seed: number) {
-  const h = (x: number, y: number) => {
-    let n = (x * 374761393 + y * 668265263 + seed * 2147483647) | 0;
-    n = Math.imul(n ^ (n >>> 13), 1274126177);
-    return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
-  };
-  return (x: number, y: number) => {
-    const xi = Math.floor(x),
-      yi = Math.floor(y),
-      xf = x - xi,
-      yf = y - yi,
-      u = xf * xf * (3 - 2 * xf),
-      v = yf * yf * (3 - 2 * yf);
-    const a = h(xi, yi),
-      b = h(xi + 1, yi),
-      c = h(xi, yi + 1),
-      d = h(xi + 1, yi + 1);
-    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
-  };
 }
 
 /* ------------------------------------------------------------------------ the image --- */
 
 const R = FLOOR.shell;
-const LANE = 0.2; // scanner head width in model units (six lanes to a plate row)
-const DEAD = 0.035; // unscanned strip either side of a weld
-const CRITICAL = 0.14; // unscanned ring just inside the shell
+const LANE = 0.19; // scanner track width (six tracks to a plate row)
+const LANE_A = 0.12; // track width on the annular plates
+const DEAD = 0.03; // unscanned strip either side of a weld
+const SHELL_GAP = 0.05; // unscanned strip at the shell
+const CELL = 4; // discontinuity speckle size, in pixels of the 2048 image
 
-function paintScan(size: number) {
-  const N = 1024;
-  const field = document.createElement('canvas');
-  field.width = field.height = N;
-  const fctx = field.getContext('2d')!;
-  const img = fctx.createImageData(N, N);
+/**
+ * Scan-track position of a floor point: which plate and track it is in, how far
+ * along the track, and the track's start / end on that plate. Null where no
+ * track can run (welds, the shell).
+ */
+function trackAt(x: number, z: number) {
+  const r = Math.hypot(x, z);
+  if (r > R - SHELL_GAP) return null;
+  if (r >= FLOOR.inner) {
+    if (r - FLOOR.inner < DEAD) return null;
+    const step = (Math.PI * 2) / FLOOR.annN,
+      a = Math.atan2(x, z) + Math.PI,
+      plate = Math.floor(a / step),
+      along = (a - plate * step) * r,
+      len = step * r;
+    if (along < DEAD || len - along < DEAD) return null;
+    const off = r - FLOOR.inner - DEAD;
+    return { plate: 100 + plate, lane: Math.floor(off / LANE_A), across: off % LANE_A, laneW: LANE_A, along, len };
+  }
+  if (FLOOR.inner - r < DEAD) return null;
+  const b = bandOf(z),
+    chord = Math.sqrt(FLOOR.inner ** 2 - z * z);
+  let left = -chord,
+    right = chord,
+    z0 = -FLOOR.inner,
+    col = 0;
+  if (b >= 0) {
+    z0 = ROW_STARTS[b];
+    if (z - z0 < DEAD || (b < 6 && z0 + FLOOR.rowH - z < DEAD)) return null;
+    for (const s of ROW_SEAMS[b]) {
+      if (Math.abs(x - s) < DEAD) return null;
+      if (s < x) {
+        left = Math.max(left, s);
+        col++;
+      } else right = Math.min(right, s);
+    }
+  } else if (ROW_STARTS[0] - z < DEAD) return null;
+  const off = z - z0 - DEAD;
+  return {
+    plate: (b + 1) * 10 + col,
+    lane: Math.floor(off / LANE),
+    across: off % LANE,
+    laneW: LANE,
+    along: x - left,
+    len: right - left,
+  };
+}
+
+let painted: HTMLCanvasElement | null = null;
+
+/** The scan image, painted once per page load (it is the same every time). */
+function paintScan(): HTMLCanvasElement {
+  if (painted) return painted;
+  const N = 2048;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = N;
+  const ctx = canvas.getContext('2d')!;
+  const img = ctx.createImageData(N, N);
   const px = img.data;
-  const n1 = noise(11),
-    n2 = noise(29),
-    n3 = noise(47);
-  const lane = rng(7);
-  const laneOffset = Array.from({ length: 400 }, () => (lane() - 0.5) * 0.045);
-  const toW = (p: number) => ((p + 0.5) / N) * 2 * R - R;
+  const scanned = new Uint8Array(N * N);
+  const s = N / (2 * R);
+  const toW = (p: number) => (p + 0.5) / s - R;
+
+  // 1. Scan tracks: light grey bands along each plate, ends ragged, an occasional missed patch.
+  const holes = new Map<number, { a0: number; a1: number; l0: number; l1: number } | null>();
+  const holeFor = (plate: number) => {
+    if (!holes.has(plate)) {
+      holes.set(
+        plate,
+        hash(plate, 1, 91) < 0.4
+          ? {
+              a0: 0.15 + hash(plate, 2, 91) * 0.5,
+              a1: 0,
+              l0: Math.floor(hash(plate, 3, 91) * 5),
+              l1: 0,
+            }
+          : null,
+      );
+      const h = holes.get(plate);
+      if (h) {
+        h.a1 = h.a0 + 0.08 + hash(plate, 4, 91) * 0.15;
+        h.l1 = h.l0 + (hash(plate, 5, 91) < 0.5 ? 0 : 1);
+      }
+    }
+    return holes.get(plate) ?? null;
+  };
   for (let j = 0; j < N; j++) {
     const z = toW(j);
     for (let i = 0; i < N; i++) {
       const x = toW(i),
-        r = Math.hypot(x, z),
         o = (j * N + i) * 4;
-      if (r > R) {
-        px[o + 3] = 0;
-        continue;
-      }
-      let unscanned = r > R - CRITICAL;
-      let laneId = 0;
-      if (!unscanned && r >= FLOOR.inner) {
-        // Annular plate: radial butt welds and the lap onto the bottom plates.
-        const a = Math.atan2(x, z),
-          step = (Math.PI * 2) / FLOOR.annN,
-          m = ((a % step) + step) % step;
-        if (Math.min(m, step - m) * r < DEAD || r - FLOOR.inner < DEAD) unscanned = true;
-        laneId = 300 + Math.floor((r - FLOOR.inner) / 0.17) + Math.floor((a + Math.PI) / step) * 5;
-      } else if (!unscanned) {
-        if (FLOOR.inner - r < DEAD) unscanned = true;
-        const b = bandOf(z);
-        if (b >= 0) {
-          const z0 = ROW_STARTS[b];
-          if (z - z0 < DEAD || (b < 6 && z0 + FLOOR.rowH - z < DEAD)) unscanned = true;
-          const seams = ROW_SEAMS[b];
-          let col = 0;
-          for (const s of seams) {
-            if (Math.abs(x - s) < DEAD) unscanned = true;
-            if (x > s) col++;
-          }
-          laneId = (b + 1) * 30 + col * 6 + Math.floor((z - z0) / LANE);
-        } else {
-          if (ROW_STARTS[0] - z < DEAD) unscanned = true;
-          laneId = Math.floor((z + R) / LANE);
+      if (x * x + z * z > R * R) continue; // transparent outside the shell
+      let c = WHITE;
+      const t = trackAt(x, z);
+      if (t) {
+        const start = 0.02 + hash(t.plate, t.lane, 7) ** 2 * 0.3,
+          end = 0.02 + hash(t.plate, t.lane, 13) ** 2 * 0.3;
+        const h = holeFor(t.plate);
+        const missed =
+          h && t.lane >= h.l0 && t.lane <= h.l1 && t.along / t.len > h.a0 && t.along / t.len < h.a1;
+        if (t.along > start && t.len - t.along > end && !missed) {
+          c = t.across < 0.007 || t.laneW - t.across < 0.004 ? TRACK_EDGE : TRACK;
+          scanned[j * N + i] = 1;
         }
       }
-      if (!unscanned && underPatch(x, z) && scanPatches.some((p) => Math.abs(x - p.x) < p.w / 2 && Math.abs(z - p.z) < p.d / 2))
-        unscanned = true;
-      if (unscanned) {
-        const hatch = (i + j) % 9 < 2 ? 0.78 : 1;
-        px[o] = UNSCANNED[0] * hatch;
-        px[o + 1] = UNSCANNED[1] * hatch;
-        px[o + 2] = UNSCANNED[2] * hatch;
-        px[o + 3] = 255;
-        continue;
-      }
-      // Baseline: per-lane gain difference, fine speckle along the lane, slow mottling.
-      let v =
-        0.075 +
-        laneOffset[laneId % laneOffset.length] +
-        (n1(x * 26, z * 70) - 0.5) * 0.07 +
-        (n2(x * 4, z * 4) - 0.5) * 0.05;
-      // Broad soil-side corrosion under the cluster at (-1.6, 2.1).
-      const g = Math.hypot(x + 1.6, z - 2.1);
-      if (g < 0.75) v += (1 - g / 0.75) ** 1.4 * (0.18 + n3(x * 9, z * 9) * 0.22);
-      for (const d of scanIndications) {
-        const dx = (x - d.x) / d.rx,
-          dz = (z - d.z) / d.rz;
-        if (dx > 3 || dx < -3 || dz > 3 || dz < -3) continue;
-        const e = Math.exp(-(dx * dx + dz * dz) * 0.9);
-        v = Math.max(v, (d.loss / SCALE_MAX) * e + v * (1 - e) * 0.6);
-      }
-      const [cr, cg, cb] = scanRGB(v);
-      px[o] = cr;
-      px[o + 1] = cg;
-      px[o + 2] = cb;
+      px[o] = c[0];
+      px[o + 1] = c[1];
+      px[o + 2] = c[2];
       px[o + 3] = 255;
     }
   }
-  fctx.putImageData(img, 0, 0);
 
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = size;
-  const ctx = canvas.getContext('2d')!;
-  ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(field, 0, 0, size, size);
-  const s = size / (2 * R);
+  // 2. Discontinuities: square speckle, mostly 20–29 %, deeper toward the middle of each area.
+  const n1 = noise(11),
+    n2 = noise(29);
+  for (let cj = 0; cj < N / CELL; cj++) {
+    for (let ci = 0; ci < N / CELL; ci++) {
+      const pi = ci * CELL + CELL / 2,
+        pj = cj * CELL + CELL / 2;
+      if (!scanned[pj * N + pi]) continue;
+      const x = toW(pi),
+        z = toW(pj),
+        r = Math.hypot(x, z);
+      // How corroded this part of the floor is, 0–1.
+      const ring = smooth(2.5, 4.1, r) * (1 - 0.55 * smooth(4.45, 4.9, r));
+      const side = 0.45 + 0.75 * n2(Math.atan2(x, z) * 1.6 + 5, 3.3);
+      let D = 0.025 + ring * 0.5 * side;
+      for (const a of AREAS) {
+        const g = Math.hypot(x - a.x, z - a.z) / a.r;
+        if (g < 1.6) D += a.k * Math.exp(-g * g * 1.6);
+      }
+      D = Math.min(1, D);
+      const clump = n1(x * 13, z * 13) * 0.7 + n1(x * 41 + 9, z * 41) * 0.3;
+      const p = D * D * smooth(0.25, 0.7, clump + D * 0.25) * 1.6;
+      let loss = 0;
+      if (hash(ci, cj, 3) < p) {
+        // Each step up a band is less likely; deeper in the thick of an area.
+        let k = 0;
+        const q = Math.min(0.42, D * clump * 0.6);
+        while (k < 6 && hash(ci * 7 + k, cj, 17) < q * (k ? 0.7 : 1)) k++;
+        loss = scanBins[k].from + hash(ci, cj, 23) * 9;
+      }
+      for (const d of scanIndications) {
+        const dx = (x - d.x) / (d.rx * 1.3),
+          dz = (z - d.z) / (d.rz * 1.3);
+        if (dx * dx + dz * dz > 4) continue;
+        const g = Math.exp(-(dx * dx + dz * dz));
+        if (hash(ci, cj, 31) < g * 0.75) {
+          loss = Math.max(loss, LOWER_THRESHOLD + (d.loss - LOWER_THRESHOLD) * g ** 0.7 * (0.75 + hash(ci, cj, 37) * 0.25));
+        }
+      }
+      if (loss < LOWER_THRESHOLD) continue;
+      const c = binRGB[binIndex(loss)];
+      for (let y = cj * CELL; y < cj * CELL + CELL; y++) {
+        for (let xx = ci * CELL; xx < ci * CELL + CELL; xx++) {
+          if (!scanned[y * N + xx]) continue;
+          const o = (y * N + xx) * 4;
+          px[o] = c[0];
+          px[o + 1] = c[1];
+          px[o + 2] = c[2];
+        }
+      }
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+
   const P = (v: number) => (v + R) * s;
-
-  // Weld lines through the middle of each unscanned strip.
-  ctx.strokeStyle = SEAM;
-  ctx.lineWidth = Math.max(1.5, size / 900);
-  ctx.beginPath();
   const half = (z: number) => Math.sqrt(Math.max(0, FLOOR.inner ** 2 - z * z));
+
+  // 3. Plate outlines.
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
   for (const z of ROW_STARTS) {
     ctx.moveTo(P(-half(z)), P(z));
     ctx.lineTo(P(half(z)), P(z));
@@ -298,6 +371,8 @@ function paintScan(size: number) {
   });
   ctx.moveTo(P(FLOOR.inner), P(0));
   ctx.arc(P(0), P(0), FLOOR.inner * s, 0, Math.PI * 2);
+  ctx.moveTo(P(R) - 1, P(0));
+  ctx.arc(P(0), P(0), R * s - 1, 0, Math.PI * 2);
   for (let k = 0; k < FLOOR.annN; k++) {
     const a = (k / FLOOR.annN) * Math.PI * 2;
     ctx.moveTo(P(Math.sin(a) * FLOOR.inner), P(Math.cos(a) * FLOOR.inner));
@@ -305,63 +380,35 @@ function paintScan(size: number) {
   }
   ctx.stroke();
 
-  // Plate numbers: rows lettered from the top, plates numbered left to right.
-  ctx.font = `600 ${Math.round(size / 95)}px ui-monospace, Menlo, monospace`;
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.72)';
-  ctx.textBaseline = 'top';
-  const bands = [
-    { z0: -FLOOR.inner, z1: ROW_STARTS[0], seams: [] as number[] },
-    ...ROW_STARTS.map((z0, b) => ({ z0, z1: Math.min(z0 + FLOOR.rowH, FLOOR.inner), seams: ROW_SEAMS[b] })),
-  ];
-  bands.forEach((band, b) => {
-    const zl = band.z0 + 0.07,
-      zm = (band.z0 + band.z1) / 2;
-    const w = Math.min(half(band.z0), half(band.z1)) || half(zm) * 0.6;
-    const edges = [-half(zm), ...band.seams.filter((x) => Math.abs(x) < half(zm)), half(zm)];
-    for (let c = 0; c < edges.length - 1; c++) {
-      let x = edges[c] + 0.07;
-      if (Math.abs(x) > w) x = Math.sign(x) * w + (x < 0 ? 0.07 : -0.4);
-      if (edges[c + 1] - x < 0.35) continue;
-      const zl2 = b === 0 ? zm - 0.06 : zl;
-      ctx.fillText(`${String.fromCharCode(65 + b)}${c + 1}`, P(x), P(zl2));
-    }
+  // 4. Weld discontinuities (red) on a couple of seams.
+  ctx.strokeStyle = WELD_DISCONTINUITY;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(P(ROW_SEAMS[1][1]), P(ROW_STARTS[1] + 0.25));
+  ctx.lineTo(P(ROW_SEAMS[1][1]), P(ROW_STARTS[1] + 0.7));
+  ctx.moveTo(P(-2.1), P(ROW_STARTS[5]));
+  ctx.lineTo(P(-1.55), P(ROW_STARTS[5]));
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(P(0), P(0), FLOOR.inner * s, 0.35, 0.52);
+  ctx.stroke();
+
+  // 5. Small markers where the seams meet, as on the plot.
+  ctx.fillStyle = MARKER;
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = 1.2;
+  const mark = (x: number, z: number) => {
+    ctx.fillRect(P(x) - 6, P(z) - 6, 12, 12);
+    ctx.strokeRect(P(x) - 6, P(z) - 6, 12, 12);
+  };
+  ROW_STARTS.forEach((z0, b) => {
+    for (const x of ROW_SEAMS[b]) if (Math.abs(x) < half(z0) - 0.05) mark(x, z0);
   });
-
-  // Repair patches: outlined and labelled (not scanned through).
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
-  ctx.lineWidth = Math.max(2, size / 700);
-  ctx.font = `700 ${Math.round(size / 110)}px ui-monospace, Menlo, monospace`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillStyle = 'rgba(20, 30, 40, 0.9)';
-  for (const p of scanPatches) {
-    ctx.strokeRect(P(p.x - p.w / 2), P(p.z - p.d / 2), p.w * s, p.d * s);
-    ctx.fillText('PATCH', P(p.x), P(p.z));
+  for (let k = 0; k < FLOOR.annN; k++) {
+    const a = (k / FLOOR.annN) * Math.PI * 2;
+    mark(Math.sin(a) * FLOOR.inner, Math.cos(a) * FLOOR.inner);
   }
-
-  // Call-outs on the indications a technician would prove up (30 % and over).
-  ctx.font = `700 ${Math.round(size / 120)}px ui-monospace, Menlo, monospace`;
-  ctx.lineWidth = Math.max(1.5, size / 1000);
-  // Deepest first, and skip any whose label would land on one already drawn (pitting clusters).
-  const placed: [number, number][] = [];
-  const clear = size / 40;
-  for (const d of [...scanIndications].sort((a, b) => b.loss - a.loss)) {
-    if (d.loss < 35) continue;
-    const ex = (d.rx + 0.045) * s,
-      ez = (d.rz + 0.045) * s,
-      lx = P(d.x) + ex * 0.72,
-      ly = P(d.z) - ez - size / 260;
-    if (placed.some(([x, y]) => Math.abs(x - lx) < clear * 1.4 && Math.abs(y - ly) < clear * 0.7)) continue;
-    placed.push([lx, ly]);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-    ctx.beginPath();
-    ctx.ellipse(P(d.x), P(d.z), ex, ez, 0, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText(String(d.no).padStart(3, '0'), lx, ly + size / 260);
-  }
+  painted = canvas;
   return canvas;
 }
 
@@ -372,7 +419,7 @@ export function buildFloorScan() {
   group.name = 'floor-scan';
   group.visible = false;
 
-  const texture = new THREE.CanvasTexture(paintScan(2048));
+  const texture = new THREE.CanvasTexture(paintScan());
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 8;
   const scanMat = new THREE.MeshBasicMaterial({
@@ -389,41 +436,24 @@ export function buildFloorScan() {
   scan.renderOrder = 1;
   group.add(scan);
 
-  // Repair patches: thin lap-welded plates sitting on the floor.
-  const patchMat = new THREE.MeshStandardMaterial({
-    color: 0xb9c4ca,
-    metalness: 0.6,
-    roughness: 0.42,
-    transparent: true,
-    opacity: 0,
-  });
-  const patches = scanPatches.map((p) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(p.w, 0.018, p.d), patchMat);
-    m.position.set(p.x, FLOOR.y + 0.01, p.z);
-    m.castShadow = true;
-    group.add(m);
-    return m;
-  });
-
-  // Pins on the deeper calls: sphere head = product (top) side, diamond = soil (under) side.
-  const pinMat = new THREE.MeshBasicMaterial({ color: 0xf4f7f9, transparent: true, opacity: 0 });
+  // Pins on the deeper calls, coloured by their band.
+  const pinMat = new THREE.MeshBasicMaterial({ color: 0x2a2f35, transparent: true, opacity: 0 });
   const stem = new THREE.CylinderGeometry(0.011, 0.011, 1, 6);
   stem.translate(0, 0.5, 0);
   const sphere = new THREE.SphereGeometry(0.065, 18, 12);
-  const diamond = new THREE.OctahedronGeometry(0.08);
   const ringGeo = new THREE.RingGeometry(0.07, 0.095, 32);
   ringGeo.rotateX(-Math.PI / 2);
   const pins = scanIndications
-    .filter((d) => d.loss >= 40)
+    .filter((d) => d.loss >= PIN_MIN)
     .map((d, i) => {
-      const height = 0.25 + (d.loss / SCALE_MAX) * 0.6;
+      const height = 0.25 + (d.loss / 100) * 0.7;
       const pin = new THREE.Group();
       pin.position.set(d.x, FLOOR.y + 0.002, d.z);
       const color = lossColor(d.loss);
       const headMat = new THREE.MeshStandardMaterial({
         color,
         emissive: color,
-        emissiveIntensity: 0.45,
+        emissiveIntensity: 0.35,
         roughness: 0.35,
         metalness: 0.1,
         transparent: true,
@@ -436,22 +466,15 @@ export function buildFloorScan() {
         toneMapped: false,
         depthWrite: false,
       });
-      const s = new THREE.Mesh(stem, pinMat);
-      const head = new THREE.Mesh(d.side === 'top' ? sphere : diamond, headMat);
-      head.position.y = height;
+      const head = new THREE.Mesh(sphere, headMat);
       head.castShadow = true;
       const ring = new THREE.Mesh(ringGeo, ringMat);
       ring.position.y = 0.002;
-      pin.add(s, head, ring);
+      pin.add(new THREE.Mesh(stem, pinMat), head, ring);
       pin.userData = { height, headMat, ringMat, delay: (i * 0.618) % 1 };
       group.add(pin);
       return pin;
     });
-
-  const smooth = (a: number, b: number, t: number) => {
-    const k = Math.min(1, Math.max(0, (t - a) / (b - a)));
-    return k * k * (3 - 2 * k);
-  };
 
   return {
     group,
@@ -459,10 +482,7 @@ export function buildFloorScan() {
     /** t = 0 hidden … 1 fully shown: scan fades in first, then the pins rise one after another. */
     setReveal(t: number) {
       group.visible = t > 0.001;
-      const scanIn = smooth(0, 0.45, t);
-      scanMat.opacity = scanIn;
-      patchMat.opacity = scanIn;
-      for (const p of patches) p.visible = scanIn > 0.01;
+      scanMat.opacity = smooth(0, 0.45, t);
       let anyPin = 0;
       for (const pin of pins) {
         const { height, headMat, ringMat, delay } = pin.userData as {

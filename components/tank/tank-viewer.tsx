@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { buildTank, palette } from './build-tank';
-import { SCALE_MAX, scanGradient } from './floor-scan';
+import { LOWER_THRESHOLD, PIN_MIN, WELD_DISCONTINUITY, scanBins } from './floor-scan';
 import { Section, TankType, sections } from '@/lib/tank-data';
 type Props = {
   type: TankType;
@@ -377,36 +377,40 @@ export default function TankViewer({
         aria-label="Floor scan legend"
       >
         <div className="flex items-center justify-between gap-3">
-          <span className="eyebrow">MFL floor scan · C-scan</span>
+          <span className="eyebrow">Top &amp; bottom discontinuities</span>
           {onCloseFloor && (
-            <button className="tool-button !px-2 !py-1 text-[10px]" onClick={onCloseFloor} tabIndex={floorView ? 0 : -1}>
+            <button
+              className="tool-button !px-2 !py-1 text-[10px]"
+              onClick={onCloseFloor}
+              tabIndex={floorView ? 0 : -1}
+            >
               Show full tank
             </button>
           )}
         </div>
-        <div className="mt-3 h-2.5 rounded-sm" style={{ background: scanGradient }} />
-        <div className="mt-1 flex justify-between font-mono text-[9px] text-muted-foreground">
-          {[0, 20, 40, 60, SCALE_MAX].map((v) => (
-            <span key={v}>{v === SCALE_MAX ? `${v}%+` : `${v}%`}</span>
+        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-[10px]">
+          {scanBins.map((b) => (
+            <span key={b.from} className="flex items-center gap-2">
+              <span className="floor-key-swatch" style={{ background: b.color }} />
+              {b.to === 100 ? `${b.from}% – 100%` : `${b.from}% – ${b.to}%`}
+            </span>
           ))}
+          <span className="flex items-center gap-2">
+            <span className="floor-key-weld" style={{ background: WELD_DISCONTINUITY }} />
+            Weld disc.
+          </span>
         </div>
-        <div className="mt-1 text-[9px] text-muted-foreground">Wall loss, % of nominal plate thickness</div>
-        <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[10px]">
-          <span className="flex items-center gap-1.5">
-            <span className="floor-key-dot" /> Topside (product side)
+        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-[10px]">
+          <span className="flex items-center gap-2">
+            <span className="floor-key-swatch floor-key-track" /> Scanned
           </span>
-          <span className="flex items-center gap-1.5">
-            <span className="floor-key-diamond" /> Underside (soil side)
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="floor-key-hatch" /> Not scanned
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="floor-key-patch" /> Repair patch
+          <span className="flex items-center gap-2">
+            <span className="floor-key-swatch floor-key-blank" /> Not scanned
           </span>
         </div>
         <div className="mt-3 border-t border-border pt-2 text-[9px] text-muted-foreground">
-          Pins mark calls of 40% and over. Illustrative data.
+          Wall loss, % of nominal. Lower threshold {LOWER_THRESHOLD}%. Pins mark calls of {PIN_MIN}%
+          and over. Illustrative data.
         </div>
       </div>
       {error && (

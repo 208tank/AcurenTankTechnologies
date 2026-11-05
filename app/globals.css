@@ -201,35 +201,25 @@ input[type='radio'] {
   pointer-events: auto;
   transition-delay: 1.4s;
 }
-.floor-key-dot,
-.floor-key-diamond,
-.floor-key-hatch,
-.floor-key-patch {
+.floor-key-swatch {
   display: inline-block;
-  width: 10px;
+  width: 16px;
   height: 10px;
   flex: none;
+  border: 1px solid hsl(var(--foreground) / 0.25);
 }
-.floor-key-dot {
-  border-radius: 50%;
-  background: hsl(var(--foreground) / 0.75);
+.floor-key-weld {
+  display: inline-block;
+  width: 16px;
+  height: 2px;
+  flex: none;
 }
-.floor-key-diamond {
-  width: 8px;
-  height: 8px;
-  margin: 0 1px;
-  transform: rotate(45deg);
-  background: hsl(var(--foreground) / 0.75);
+/* Same greys as the scan image in floor-scan.ts. */
+.floor-key-track {
+  background: #e2e3e5;
 }
-.floor-key-hatch {
-  background: repeating-linear-gradient(
-    45deg,
-    hsl(var(--muted-foreground) / 0.55) 0 2px,
-    hsl(var(--muted-foreground) / 0.3) 2px 4px
-  );
-}
-.floor-key-patch {
-  border: 1.5px solid hsl(var(--foreground) / 0.7);
+.floor-key-blank {
+  background: #fafafa;
 }
 @media (max-width: 600px) {
   .floor-legend {
